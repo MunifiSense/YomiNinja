@@ -31,6 +31,7 @@ export default function AutoOcrOptions( props: AutoOcrOptionsProps ) {
 
     const motionSensitivity = selectedTargetRegion?.auto_ocr_options?.motion_sensitivity || 0;
     const frameSampleSize = selectedTargetRegion?.auto_ocr_options?.frame_sample_size || 0;
+    const settleDelayMs = selectedTargetRegion?.auto_ocr_options?.settle_delay_ms || 0;
     const intervalBetweenFrames = activeOcrTemplate?.capturer_options?.interval_between_frames || 0;
 
     const [ maximumFrameRate, setMaximumFrameRate ] = useState(
@@ -180,6 +181,48 @@ export default function AutoOcrOptions( props: AutoOcrOptionsProps ) {
                     auto_ocr_options: {
                         ...selectedTargetRegion.auto_ocr_options,
                         frame_sample_size: 8
+                    }
+                };
+                setSelectedTargetRegion(data);
+                updateTargetRegion(data);
+            }}
+        />
+
+        <OcrSettingsSlider
+            label="Settle Delay (ms)"
+            title="How long the region must stay unchanged after motion stops before OCR runs. Useful for typewriter text or brief UI animations. 0 OCR's on the first stable frame."
+            disabled={ !Boolean( selectedTargetRegion?.auto_ocr_options?.enabled ) }
+            min={0}
+            max={2000}
+            value={ settleDelayMs }
+            step={50}
+            leftLabel="0"
+            rightLabel="2000"
+            onChange={ ( event, newValue ) => {
+                if (typeof newValue === 'number') {
+                    setSelectedTargetRegion({
+                        ...selectedTargetRegion,
+                        auto_ocr_options: {
+                            ...selectedTargetRegion.auto_ocr_options,
+                            settle_delay_ms: newValue
+                        }
+                    })
+                }
+            }}
+            onChangeCommitted={ () => {
+                updateTargetRegion({
+                    ...selectedTargetRegion,
+                    auto_ocr_options: {
+                        ...selectedTargetRegion.auto_ocr_options,
+                    }
+                });
+            }}
+            reset={ () => {
+                const data = {
+                    ...selectedTargetRegion,
+                    auto_ocr_options: {
+                        ...selectedTargetRegion.auto_ocr_options,
+                        settle_delay_ms: 0
                     }
                 };
                 setSelectedTargetRegion(data);

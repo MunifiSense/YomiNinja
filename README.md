@@ -91,19 +91,52 @@ Notes:
 ## Building
 
 ### Windows (x64) — recommended
-1. Clone the repository and install [Node.js](https://nodejs.org/) + [VCRedist](https://www.techpowerup.com/download/visual-c-redistributable-runtime-package-all-in-one/).
+1. Clone the repository and install [Node.js](https://nodejs.org/) + [VCRedist](https://www.techpowerup.com/download/visual-c-redistributable-runtime-package-all-in-one/). For native Node modules, install [VS 2022 Build Tools](https://aka.ms/vs/17/release/vs_BuildTools.exe) with the **Desktop development with C++** workload.
 2. Download a Windows build of [PPOCR-Inference-Service](https://github.com/matt-m-o/PPOCR-Inference-Service/releases) and extract it to:
    ```
    ./bin/win32/x64/ppocr/
    ```
-3. Run the setup helper (npm install, OCR gRPC types, Chromium Lens protos → `lens_pb`):
+3. Prepare **`py_ocr_service`** (gitignored runtime — not shipped in the repo):
+
+   1. Download the [Python 3.12 Windows embeddable package (x86-64)](https://www.python.org/downloads/windows/) and extract it to:
+      ```
+      ./ocr_services/py_ocr_service/python/win32/x64/
+      ```
+      Edit `python312._pth` in that folder and uncomment `import site` (required for pip/site-packages).
+   2. Install pip into the embeddable Python (e.g. download [get-pip.py](https://bootstrap.pypa.io/get-pip.py) into that folder and run `python.exe get-pip.py`).
+   3. Install dependencies into that Python:
+      ```commandline
+      cd ocr_services\py_ocr_service
+      .\python\win32\x64\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+      .\python\win32\x64\python.exe -m pip install -r requirements.txt
+      ```
+      (For CUDA, use a CUDA PyTorch index URL instead of `cpu`.)
+   4. Clone [comic-text-detector](https://github.com/kha-white/comic-text-detector) into `src` (or run `src\get_comic_text_detector.sh` from Git Bash):
+      ```commandline
+      cd src
+      git clone https://github.com/kha-white/comic-text-detector.git
+      move comic-text-detector comic_text_detector
+      cd ..
+      ```
+   5. Download [`comictextdetector.pt`](https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt) and place it at:
+      ```
+      ./ocr_services/py_ocr_service/models/comic_text_detector/comictextdetector.pt
+      ```
+   6. Generate Python gRPC stubs:
+      ```commandline
+      gen_grpc_service.bat
+      ```
+   Manga OCR weights are downloaded on first use (Hugging Face); you do not need to vendor them for a local build.
+
+4. Run the setup helper (npm install, OCR gRPC types, Chromium Lens protos → `lens_pb`):
    ```commandline
    setup-win-dev.bat
    ```
-4. Build OCR python package + Electron installer (or reuse an existing `bin\win32\x64\py_ocr_service`):
+5. Package `py_ocr_service` into `bin\` and build the Electron installer:
    ```commandline
    build-win32-x64.bat
    ```
+   That script copies `python\`, `src\`, and `models\comic_text_detector\` into `bin\win32\x64\py_ocr_service\`, then builds the app.  
    Output installer: `yomininja-e\dist\YomiNinja Setup *.exe`
 
 Notes:
@@ -117,7 +150,13 @@ Notes:
     git clone https://github.com/matt-m-o/YomiNinja.git && cd YomiNinja
     ```
 
-2. Build OCR services:
+2. Prepare and build **`py_ocr_service`** the same way as in the Windows steps above (embedded/local Python under `ocr_services/py_ocr_service/python/<platform>/`, comic-text-detector under `src/comic_text_detector`, and `models/comic_text_detector/comictextdetector.pt`). Then either:
+    ```commandline
+    cd ./ocr_services/py_ocr_service
+    ./gen_grpc_service.bat
+    ./build-win32-x64.bat
+    ```
+    and copy the result from `dist\win32\x64\py_ocr_service\` into `bin\win32\x64\py_ocr_service\`, **or** use the older PyInstaller flow:
     ```commandline
     cd ./ocr_services/py_ocr_service
     ./gen_grpc_service.bat

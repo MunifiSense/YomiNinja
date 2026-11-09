@@ -17,6 +17,8 @@ export type AutoOcrOptions = {
     enabled: boolean;
     motion_sensitivity: number;
     frame_sample_size?: number;
+    /** Ms to wait after motion stops before OCR. 0 = OCR on first stable frame. */
+    settle_delay_ms?: number;
     refresh_all_regions: boolean;
 }
 
@@ -92,6 +94,7 @@ export class OcrTargetRegion {
             enabled: Boolean( props.auto_ocr_options?.enabled ),
             motion_sensitivity: props.auto_ocr_options?.motion_sensitivity || 0.5,
             frame_sample_size: props.auto_ocr_options?.frame_sample_size || 8,
+            settle_delay_ms: Math.max( 0, props.auto_ocr_options?.settle_delay_ms || 0 ),
             refresh_all_regions: Boolean( props.auto_ocr_options?.refresh_all_regions )
         }
 

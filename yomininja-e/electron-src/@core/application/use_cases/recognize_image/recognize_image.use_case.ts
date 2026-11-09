@@ -21,6 +21,8 @@ export type RecognizeImageInput = {
 export class RecognizeImageUseCase< TOcrSettings extends OcrEngineSettings > {
 
     private isRegionStable: Map<string, boolean> = new Map();
+    /** Timestamp when a region first became stable after motion; used for settle_delay_ms. */
+    private regionStableSince: Map<string, number> = new Map();
     private previousResult: OcrResultScalable | null; // ! Create map for storing the results of each region. Clear the map when the activeTemplateID changes.
     private regionResultCache: Map< string, OcrResultScalable | null > = new Map(); // < OcrResultScalable.ID, OcrResultScalable >
     private activeTemplateId: OcrTemplateId | undefined;
@@ -87,6 +89,7 @@ export class RecognizeImageUseCase< TOcrSettings extends OcrEngineSettings > {
             profile.active_ocr_template?.id !== this.activeTemplateId
         ) {
             this.isRegionStable.clear();
+            this.regionStableSince.clear();
             this.previousResult = null;
             this.regionResultCache.clear();
         }
@@ -210,6 +213,7 @@ export class RecognizeImageUseCase< TOcrSettings extends OcrEngineSettings > {
                 if ( motionResult.motionPixelsCount > motionThreshold ) {
                     // this.isRegionStable = false;
                     this.isRegionStable.set(targetRegion.id, false);
+                    this.regionStableSince.delete( targetRegion.id );
                     // ! useful
                     // console.log({
                     //     regionIsStable: this.regionIsStable,
@@ -220,8 +224,22 @@ export class RecognizeImageUseCase< TOcrSettings extends OcrEngineSettings > {
                     motionResult.motionPixelsCount < motionThreshold &&
                     !this.isRegionStable.get( targetRegion.id )
                 ) {
+                    const settleDelayMs = Math.max( 0, auto_ocr_options.settle_delay_ms || 0 );
+                    const now = Date.now();
+
+                    if ( !this.regionStableSince.has( targetRegion.id ) ) {
+                        this.regionStableSince.set( targetRegion.id, now );
+                    }
+
+                    const stableSince = this.regionStableSince.get( targetRegion.id ) || now;
+                    if ( now - stableSince < settleDelayMs ) {
+                        // Still settling after motion stopped; keep previous OCR until delay elapses.
+                        return this.previousResult;
+                    }
+
                     // this.isRegionStable = true;
                     this.isRegionStable.set( targetRegion.id, true );
+                    this.regionStableSince.delete( targetRegion.id );
                     totalChanges++;
                 }
                 else {
