@@ -30,11 +30,12 @@ export class ScreenCapturerController {
         
         const { captureSource } = input ; 
         
-        if ( captureSource?.name?.includes('Entire screen') ) {
-            const displays = screen.getAllDisplays();
-            if ( displays.length > 1 )
-                return false;
-        }
+        // Prefer desktopCapturer for "Entire screen". WebRTC capture can fail on
+        // Windows when display HMONITOR handles don't match (seen as
+        // GetHmonitorFromDeviceIndex / GetDpiForMonitor errors), which yields
+        // empty frames and "No text recognized" even for large browser text.
+        if ( captureSource?.name?.includes('Entire screen') )
+            return false;
     
         console.time("Screenshot time");
         screenCapturerService.grabFrame();

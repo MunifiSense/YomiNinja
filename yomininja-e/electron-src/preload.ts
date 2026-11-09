@@ -21,9 +21,13 @@ process.once('loaded', () => {
 });
 
 // Inject <browser-action-list> element into our page
-if ( 
-  location.href.includes('index') || // Prod
-  location.href.includes('http://localhost:8000/') // Dev
-) {
-  injectBrowserAction();
+try {
+  if (
+    location.href.includes('index') || // Prod
+    location.href.includes('http://localhost:8000/') // Dev
+  ) {
+    injectBrowserAction();
+  }
+} catch ( error ) {
+  console.error( 'Failed to inject browser-action-list:', error );
 }

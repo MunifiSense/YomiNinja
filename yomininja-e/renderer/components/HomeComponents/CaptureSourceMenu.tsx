@@ -37,10 +37,15 @@ export default function CaptureSourceMenu() {
     const [ searchValue, setSearchValue ] = useState< string >('');
 
     useEffect( () => {
-        if ( !systemInfo ) return;
+        // Always try to load sources on open. Waiting only on systemInfo left the
+        // picker empty when app-info IPC was slow/unavailable.
         if ( systemInfo?.windowSystem === 'Wayland' ) return;
         refreshCaptureSources();
-    }, [systemInfo]);    
+    }, [systemInfo]);
+
+    useEffect( () => {
+        refreshCaptureSources();
+    }, []);    
     
     const [ tab, setTab ] = useState('1');
 
@@ -148,36 +153,43 @@ export default function CaptureSourceMenu() {
         };
 
         return (<>
-            { systemInfo?.windowSystem === 'Wayland' &&
-                <Grid item>
-                    <Button title={'Refresh list'}
-                        onClick={ () => {
-                            refreshCaptureSources([type])
-                        }} 
-                        sx={{ width: 'max-content' }}
+            <Grid item>
+                <Button title={'Refresh list'}
+                    onClick={ () => {
+                        refreshCaptureSources([type])
+                    }} 
+                    sx={{ width: 'max-content' }}
+                >
+                    <Box display='flex' flexDirection='column' alignItems='center'
+                        sx={{
+                            height: '130px',
+                        }}
                     >
-                        <Box display='flex' flexDirection='column' alignItems='center'
-                            sx={{
-                                height: '130px',
+                        <SyncIcon sx={{ width: '100%', height: '100%' }}/>
+                        <Typography align="center" mt={2}
+                            sx={{ 
+                                textTransform: 'initial',
+                                textOverflow: 'ellipsis',
+                                overflow: 'hidden',
+                                whiteSpace: 'nowrap',
+                                width: '180px',
+                                mt: 'auto'
                             }}
                         >
-                            <SyncIcon sx={{ width: '100%', height: '100%' }}/>
-                            <Typography align="center" mt={2}
-                                sx={{ 
-                                    textTransform: 'initial',
-                                    textOverflow: 'ellipsis',
-                                    overflow: 'hidden',
-                                    whiteSpace: 'nowrap',
-                                    width: '180px',
-                                    mt: 'auto'
-                                }}
-                            >
-                                Refresh
-                            </Typography>
-                        </Box>
-                    </Button>
+                            Refresh
+                        </Typography>
+                    </Box>
+                </Button>
+            </Grid>
+            { (!items || items.length === 0) && (
+                <Grid item xs={12}>
+                    <Typography color="text.secondary" sx={{ maxWidth: 420, mt: 2 }}>
+                        No capture sources found. On Windows, allow screen capture for desktop apps
+                        (Settings → Privacy &amp; security → Screen recording / Graphics capture),
+                        then click Refresh.
+                    </Typography>
                 </Grid>
-            }
+            )}
             { items?.sort(sort)
                 .filter( item => item.name.toLowerCase().includes( searchValue.toLowerCase() ) )
                 .map( ( item, idx ) => (

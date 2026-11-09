@@ -25,7 +25,10 @@
       "jest"
     ]
   },
-  "exclude": ["node_modules"],
+  "exclude": [
+    "node_modules",
+    "**/*.spec.ts"
+  ],
   "include": ["**/*.ts", "**/*.tsx", "**/*.js"],
   "assets": ["../**/*.proto"]
 }

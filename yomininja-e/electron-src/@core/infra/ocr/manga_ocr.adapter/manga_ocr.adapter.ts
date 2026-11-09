@@ -18,7 +18,7 @@ export class MangaOcrAdapter implements OcrAdapter< MangaOcrEngineSettings > {
     private prevResult: OcrResultScalable | null = null;
     private prevResultTime: Date = new Date();
 
-    private engineSettings: MangaOcrEngineSettings;
+    private engineSettings: MangaOcrEngineSettings = getMangaOcrDefaultSettings();
 
     get status(): OcrAdapterStatus {
         return mangaOcrPyService.status;
@@ -39,6 +39,10 @@ export class MangaOcrAdapter implements OcrAdapter< MangaOcrEngineSettings > {
         }
         else {
             this.recognitionCallOnHold = undefined;            
+        }
+
+        if ( !this.engineSettings ) {
+            this.engineSettings = getMangaOcrDefaultSettings();
         }
         
         this.idCounter++;

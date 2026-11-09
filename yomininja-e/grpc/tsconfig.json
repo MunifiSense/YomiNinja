@@ -11,6 +11,6 @@
       "jest"
     ]
   },
-  "exclude": ["node_modules", "lens_proto"],
+  "exclude": ["node_modules", "lens_proto", "rpc/lens"],
   "include": ["**/*.ts", "**/*.tsx", "**/*.js"],
 }

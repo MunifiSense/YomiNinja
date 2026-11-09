@@ -35,6 +35,11 @@ import base64
 from io import BytesIO
 from PIL import Image
 import numpy as np
+# NumPy 2.x removed np.int0 / np.uint0; keep aliases for ComicTextDetector etc.
+if not hasattr(np, "int0"):
+    np.int0 = np.intp  # type: ignore[attr-defined]
+if not hasattr(np, "uint0"):
+    np.uint0 = np.uintp  # type: ignore[attr-defined]
 from typing import List
 from concurrent.futures import ProcessPoolExecutor
 

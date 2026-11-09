@@ -15,7 +15,10 @@ export let httpServer = http.createServer( async (req, res) => {
 
     const parsedUrl = url.parse( String(req?.url), true )
 
-    let filePath = req.url === '/' ? '/index.html' : String(req.url);
+    // Use pathname only — query strings break fs lookups and can white-screen the UI
+    let filePath = parsedUrl.pathname === '/' || !parsedUrl.pathname
+      ? '/index.html'
+      : parsedUrl.pathname;
     filePath = path.join(
       isDev ? './renderer/out' : PAGES_DIR,
       filePath || ''
@@ -73,9 +76,16 @@ export let socketServer = new Server( httpServer, {
     }    
 });
 
+let resolveHttpServerReady: () => void;
+export const httpServerReady: Promise<void> = new Promise( resolve => {
+    resolveHttpServerReady = resolve;
+});
+
 getNextPortAvailable( httpServerPort )
     .then( port => {
         setHttpServerPort( port || httpServerPort - 1 );
         console.log("\nHTTP Server port: "+httpServerPort);
-        httpServer.listen( httpServerPort );
+        httpServer.listen( httpServerPort, () => {
+            resolveHttpServerReady();
+        });
     });

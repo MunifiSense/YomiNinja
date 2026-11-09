@@ -72,6 +72,27 @@ export class PyOcrService {
         }
 
         this.MODELS_PATH = join( this.serviceRoot, '/models' );
+        this.ensureBundledModelsInstalled();
+    }
+
+    private ensureBundledModelsInstalled() {
+        try {
+            const packagedModels = join( this.binRoot, '/models' );
+            if ( !fs.existsSync( packagedModels ) )
+                return;
+
+            fs.mkdirSync( this.MODELS_PATH, { recursive: true } );
+
+            for ( const entry of fs.readdirSync( packagedModels, { withFileTypes: true } ) ) {
+                const src = join( packagedModels, entry.name );
+                const dest = join( this.MODELS_PATH, entry.name );
+                if ( fs.existsSync( dest ) )
+                    continue;
+                fs.cpSync( src, dest, { recursive: true } );
+            }
+        } catch ( error ) {
+            console.error( 'Failed to install bundled OCR models:', error );
+        }
     }
 
     connect( serviceAddress: string ) {
@@ -355,9 +376,25 @@ export class PyOcrService {
 
         const executableName = this.pyExecutableName; // python or py_ocr_service
 
-        const executablePath = join( this.serviceRoot, `/python/${this.pyExecutableName}` );
+        const userExecutablePath = join( this.serviceRoot, `/python/${this.pyExecutableName}` );
+        const packagedExecutablePath = join( this.binRoot, `/python/${this.pyExecutableName}` );
+        const executablePath = fs.existsSync( userExecutablePath )
+            ? userExecutablePath
+            : packagedExecutablePath;
         const srcPath = join( this.binRoot, `/src` )
         const pyScript = join( this.binRoot, `/src/py_ocr_service.py` );
+
+        if ( !fs.existsSync( executablePath ) ) {
+            console.error( `PyOcrService python not found at ${executablePath}` );
+            this.status = OcrAdapterStatus.Disabled;
+            return;
+        }
+
+        if ( !fs.existsSync( pyScript ) ) {
+            console.error( `PyOcrService script not found at ${pyScript}` );
+            this.status = OcrAdapterStatus.Disabled;
+            return;
+        }
 
         // console.log({
         //     pythonExecutable: executablePath,
@@ -379,6 +416,11 @@ export class PyOcrService {
                 } 
             }
         );
+
+        this.serviceProcess.on( 'error', ( error ) => {
+            console.error( `Failed to start ${executableName}:`, error );
+            this.status = OcrAdapterStatus.Disabled;
+        });
 
         // Handle stdout data
         this.serviceProcess.stdout.on('data', async ( data: string ) => {
@@ -554,6 +596,11 @@ export class PyOcrService {
 
         const pyPath = join( this.binRoot, '/python' );
         const userPyPath = join( this.serviceRoot, '/python' );
+
+        if ( !fs.existsSync( pyPath ) ) {
+            console.error( `Packaged Python not found at ${pyPath}; skipping installPython()` );
+            return;
+        }
 
         fs.mkdirSync( userPyPath, { recursive: true } )
 

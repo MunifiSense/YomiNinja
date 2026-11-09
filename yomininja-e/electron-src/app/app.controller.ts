@@ -249,6 +249,7 @@ export class AppController {
             async ( event: IpcMainInvokeEvent, types: ('screen' | 'window')[] | undefined ): Promise< CaptureSource[] > => {
 
                 const sources = await this.appService.getAllCaptureSources(types);
+                console.log( `Capture sources (${types?.join(',') || 'screen,window'}): ${sources.length}` );
                 return sources;
             }
         );
@@ -408,40 +409,24 @@ export class AppController {
                 // console.log({ userPreferredDisplayId: this.userPreferredDisplayId });
                 // console.log({ captureSourceDisplay: this.captureSourceDisplay });
 
-                const multipleDisplays = screen.getAllDisplays().length > 1;
                 const isWindowImage = Boolean(e.altKey);
+                const clipboardImage = clipboard.readImage();
 
-                if ( multipleDisplays ) {
-
-                    if ( !isWindowImage )
-                        return this.handleOcrCommand();
-                        // return this.ocrRecognitionController.recognize();
-                    
-                    if ( isWindowImage && this.userSelectedWindowId )
-                        return this.handleOcrCommand({ image: clipboard.readImage().toPNG() });
-                        // return this.ocrRecognitionController.recognize( clipboard.readImage().toPNG() );
-
-                    else
-                        return this.handleOcrCommand({
-                            image: clipboard.readImage().toPNG(),
-                            runFullScreenImageCheck //: false
-                        });
-                        // return this.ocrRecognitionController.recognize( clipboard.readImage().toPNG(), runFullScreenImageCheck );
+                // Always prefer the OS PrintScreen clipboard image. On multi-monitor
+                // setups the WebRTC capturer can fail (invalid HMONITOR) and return
+                // empty frames, which surfaces as "No text recognized".
+                if ( clipboardImage.isEmpty() ) {
+                    console.warn( 'PrintScreen clipboard image was empty; falling back to screen capturer' );
+                    return this.handleOcrCommand({ runFullScreenImageCheck });
                 }
-                else {
 
-                    if ( this.userSelectedWindowId )
-                        return this.handleOcrCommand({
-                            image: clipboard.readImage().toPNG()
-                        });
-                        // return this.ocrRecognitionController.recognize( clipboard.readImage().toPNG() );
+                if ( isWindowImage && this.userSelectedWindowId )
+                    return this.handleOcrCommand({ image: clipboardImage.toPNG() });
 
-                    return this.handleOcrCommand({
-                        image: clipboard.readImage().toPNG(),
-                        runFullScreenImageCheck
-                    });
-                    // return this.ocrRecognitionController.recognize( clipboard.readImage().toPNG(), runFullScreenImageCheck );
-                }
+                return this.handleOcrCommand({
+                    image: clipboardImage.toPNG(),
+                    runFullScreenImageCheck
+                });
                 
             });
         }
@@ -671,7 +656,15 @@ export class AppController {
             autoCrop
         });
 
-        if ( !image ) return;
+        if ( !image ) {
+            console.error( 'OCR aborted: capture source image was empty', {
+                engineName,
+                displayId: this.captureSourceDisplay?.id,
+                windowId: this.captureSourceWindow?.id,
+                activeCaptureSource: this.activeCaptureSource,
+            } );
+            return;
+        }
 
         let imageSize: Promise<Electron.Size> | undefined;
 

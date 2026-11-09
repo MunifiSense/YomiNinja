@@ -1,6 +1,7 @@
 import { OcrItem, OcrItemBox, OcrResult, OcrTextLine } from "../../../../domain/ocr_result/ocr_result";
 import { OcrAdapterStatus, UpdateOcrAdapterSettingsOutput } from "../../../../application/adapters/ocr.adapter";
 import * as grpc from '@grpc/grpc-js';
+import * as protoLoader from '@grpc/proto-loader';
 import { OCRServiceClient } from "../../../../../../grpc/rpc/ocr_service/OCRService";
 import { RecognizeDefaultResponse__Output } from "../../../../../../grpc/rpc/ocr_service/RecognizeDefaultResponse";
 import { GetSupportedLanguagesResponse__Output } from "../../../../../../grpc/rpc/ocr_service/GetSupportedLanguagesResponse";
@@ -22,10 +23,106 @@ import { getNextPortAvailable } from "../../../util/port_check";
 import { TextLine__Output } from "../../../../../../grpc/rpc/ocr_service/TextLine";
 import { isLinux } from "../../../../../util/environment.util";
 
+type LegacyPpOcrResult = {
+    text?: string;
+    recognition_score?: number;
+    classification_score?: number;
+    classification_label?: number;
+    box?: OcrItemBox;
+    is_vertical?: boolean;
+};
+
+type LegacyRecognizeDefaultResponse = {
+    id?: string;
+    results?: LegacyPpOcrResult[];
+    context_resolution?: { width?: number; height?: number };
+};
+
+const LEGACY_PPOCR_PROTO = `syntax = "proto3";
+package ocr_service;
+service OCRService {
+  rpc RecognizeBytes( RecognizeBytesRequest ) returns ( RecognizeDefaultResponse ) {}
+  rpc GetSupportedLanguages( GetSupportedLanguagesRequest ) returns ( GetSupportedLanguagesResponse ) {}
+  rpc UpdatePpOcrSettings( UpdatePpOcrSettingsRequest ) returns ( UpdateSettingsResponse ) {}
+  rpc Detect( DetectRequest ) returns ( DetectResponse ) {}
+}
+message RecognizeBytesRequest {
+  string id = 1;
+  string language_code = 2;
+  bytes image_bytes = 3;
+  repeated Box boxes = 4;
+  string ocr_engine = 5;
+}
+message Vertex { int32 x = 1; int32 y = 2; }
+message Box {
+  Vertex bottom_left = 1;
+  Vertex bottom_right = 2;
+  Vertex top_left = 3;
+  Vertex top_right = 4;
+}
+message Result {
+  string text = 1;
+  float recognition_score = 2;
+  float classification_score = 3;
+  int32 classification_label = 4;
+  Box box = 5;
+  bool is_vertical = 6;
+}
+message ContextResolution { int32 width = 1; int32 height = 2; }
+message RecognizeDefaultResponse {
+  string id = 1;
+  repeated Result results = 2;
+  ContextResolution context_resolution = 3;
+}
+message GetSupportedLanguagesRequest { string ocr_engine = 1; }
+message GetSupportedLanguagesResponse { repeated string language_codes = 1; }
+message DetectRequest {
+  string id = 1;
+  string language_code = 2;
+  bool crop_image = 3;
+  bytes image_bytes = 4;
+  string ocr_engine = 5;
+}
+message DetectResult { bytes image_bytes = 1; Box box = 2; }
+message DetectResponse {
+  string id = 1;
+  repeated DetectResult results = 2;
+  ContextResolution context_resolution = 3;
+}
+message UpdatePpOcrSettingsRequest {
+  int32 max_image_width = 1;
+  int32 cpu_threads = 2;
+  string inference_runtime = 3;
+  double det_db_thresh = 4;
+  double det_db_box_thresh = 5;
+  double det_db_unclip_ratio = 6;
+  string det_db_score_mode = 7;
+  bool use_dilation = 8;
+  double cls_thresh = 9;
+}
+message UpdateSettingsResponse { bool success = 1; }
+`;
+
+function loadLegacyPpOcrProto(): any {
+    const protoPath = join( USER_DATA_DIR, 'ocr_service_ppocr_legacy.proto' );
+    fs.mkdirSync( USER_DATA_DIR, { recursive: true } );
+    fs.writeFileSync( protoPath, LEGACY_PPOCR_PROTO, 'utf8' );
+
+    const packageDefinition = protoLoader.loadSync( protoPath, {
+        keepCase: true,
+        longs: String,
+        enums: String,
+        defaults: true,
+        oneofs: true,
+    } );
+    return grpc.loadPackageDefinition( packageDefinition );
+}
+
 export class PaddleOcrService {
     
     public status: OcrAdapterStatus = OcrAdapterStatus.Disabled;
     private ocrServiceClient: OCRServiceClient | null = null;
+    private legacyOcrServiceClient: any = null;
     private serviceProcess: ChildProcessWithoutNullStreams;
     private settingsPresetsRoot: string;
     private binRoot: string;
@@ -53,6 +150,17 @@ export class PaddleOcrService {
             grpc.credentials.createInsecure(),
         );
 
+        try {
+            const legacyProto = loadLegacyPpOcrProto();
+            this.legacyOcrServiceClient = new legacyProto.ocr_service.OCRService(
+                serviceAddress,
+                grpc.credentials.createInsecure(),
+            );
+        } catch ( error ) {
+            console.error( 'Failed to load PaddleOCR legacy proto client:', error );
+            this.legacyOcrServiceClient = null;
+        }
+
         this.status = OcrAdapterStatus.Enabled;
     }
 
@@ -62,11 +170,17 @@ export class PaddleOcrService {
         if ( !ok ) return null;
 
         this.status = OcrAdapterStatus.Processing;
-        // console.time('PaddleOcrService.recognize');        
-        const clientResponse = await new Promise< RecognizeDefaultResponse__Output | undefined >(
-            (resolve, reject) => this.ocrServiceClient?.RecognizeBytes( input, ( error, response ) => {
+        // console.time('PaddleOcrService.recognize');
+
+        // Prebuilt ppocr_infer_service_grpc.exe still returns Result.text (string),
+        // while the shared proto expects Result.text_lines. Use the legacy client.
+        const client = this.legacyOcrServiceClient || this.ocrServiceClient;
+        const clientResponse = await new Promise< LegacyRecognizeDefaultResponse | RecognizeDefaultResponse__Output | undefined >(
+            (resolve, reject) => client?.RecognizeBytes( input, ( error: Error | null, response: any ) => {
                 if (error) {
-                    this.restart( () => {} );
+                    // Avoid killing a healthy process on transient parse/transport errors;
+                    // only restart when the service is actually down.
+                    console.error( 'PaddleOCR RecognizeBytes failed:', error.message || error );
                     return reject(error)
                 }
                 resolve(response);
@@ -86,30 +200,40 @@ export class PaddleOcrService {
         
         const ocrItems: OcrItem[] = [];
 
-        for ( const item of clientResponse.results ) {
+        for ( const item of clientResponse.results as Array< LegacyPpOcrResult & { text_lines?: TextLine__Output[] } > ) {
 
             const lines: OcrTextLine[] = [];
 
-            if ( !item?.text_lines?.length ) continue;
-            
-            for ( const line of item.text_lines ) {
-                if ( !line?.content?.length ) continue;
+            if ( typeof item?.text === 'string' && item.text.length ) {
                 lines.push({
-                    content: line.content,
-                    box: line.box || undefined
+                    content: item.text,
+                    box: item.box || undefined
                 } as OcrTextLine );
+            } else if ( item?.text_lines?.length ) {
+                for ( const line of item.text_lines ) {
+                    if ( !line?.content?.length ) continue;
+                    lines.push({
+                        content: line.content,
+                        box: line.box || undefined
+                    } as OcrTextLine );
+                }
             }
+
+            if ( !lines.length ) continue;
 
             ocrItems.push({
                 ...item,
                 text: lines,
-                is_vertical: undefined // Not supported
+                is_vertical: item.is_vertical
             } as OcrItem);
         }
 
         const result = OcrResult.create({
-            id: clientResponse.id,
-            context_resolution: clientResponse.context_resolution,
+            id: clientResponse.id || '',
+            context_resolution: {
+                width: clientResponse.context_resolution.width || 0,
+                height: clientResponse.context_resolution.height || 0,
+            },
             results: ocrItems,
             image: input.image_bytes as Buffer
         });

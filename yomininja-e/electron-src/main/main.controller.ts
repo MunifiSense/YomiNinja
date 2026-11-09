@@ -12,6 +12,7 @@ import { overlayController } from '../overlay/overlay.index';
 import { uIOhook } from 'uiohook-napi';
 import { ipcMain } from '../common/ipc_main';
 import { httpServerPort } from '../util/environment.util';
+import { httpServerReady } from '../common/server';
 
 export class MainController {
 
@@ -36,12 +37,17 @@ export class MainController {
             width: 1200,
             height: 700,
             autoHideMenuBar: true,
+            backgroundColor: '#121212',
             webPreferences: {
                 sandbox: true,
                 nodeIntegration: false,
                 contextIsolation: false,
                 preload: join(__dirname, '../preload.js'),
             },
+        });
+
+        this.mainWindow.webContents.on( 'did-fail-load', ( _event, errorCode, errorDescription, validatedURL ) => {
+            console.error( 'Main window failed to load:', { errorCode, errorDescription, validatedURL } );
         });
 
         if ( !isDev )
@@ -169,11 +175,25 @@ export class MainController {
     }
 
     async loadMainPage( showWindow = true ): Promise< void >  {
+        if ( !isDev )
+            await httpServerReady;
+
         this.mainWindowUrl = isDev ?
             'http://localhost:8000/' :
             `http://localhost:${httpServerPort}/index.html`;
 
-        await this.mainWindow.loadURL (this.mainWindowUrl );
+        const maxAttempts = 5;
+        for ( let attempt = 1; attempt <= maxAttempts; attempt++ ) {
+            try {
+                await this.mainWindow.loadURL( this.mainWindowUrl );
+                break;
+            } catch ( error ) {
+                console.error( `Main window load attempt ${attempt}/${maxAttempts} failed:`, error );
+                if ( attempt === maxAttempts )
+                    throw error;
+                await new Promise( resolve => setTimeout( resolve, 500 * attempt ) );
+            }
+        }
 
         if ( showWindow )
             this.mainWindow.show();
@@ -207,13 +227,11 @@ export class MainController {
             this.captureSourceWindow = null;
         });
 
+        // Serve over the local HTTP server in production too. file:// breaks the
+        // socket.io IPC fallback and can leave the capture-source list empty.
         const url = isDev
-        ? 'http://localhost:8000/capture-source-selection'
-        : format({
-            pathname: join( PAGES_DIR, '/capture-source-selection.html'),
-            protocol: 'file:',
-            slashes: true,
-        });
+            ? 'http://localhost:8000/capture-source-selection'
+            : `http://localhost:${httpServerPort}/capture-source-selection.html`;
 
         this.captureSourceWindow.loadURL(url);
 

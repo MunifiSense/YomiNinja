@@ -1,0 +1,104 @@
+syntax = "proto3";
+
+// Legacy schema matching the prebuilt ppocr_infer_service_grpc.exe (≈2024-06).
+// Result.text (string) was later replaced by Result.text_lines (repeated TextLine).
+package ocr_service;
+
+service OCRService {
+  rpc RecognizeBytes( RecognizeBytesRequest ) returns ( RecognizeDefaultResponse ) {}
+  rpc RecognizeBase64( RecognizeBase64Request ) returns ( RecognizeDefaultResponse ) {}
+  rpc Detect( DetectRequest ) returns ( DetectResponse ) {}
+  rpc GetSupportedLanguages( GetSupportedLanguagesRequest ) returns ( GetSupportedLanguagesResponse ) {}
+  rpc UpdatePpOcrSettings( UpdatePpOcrSettingsRequest ) returns ( UpdateSettingsResponse ) {}
+}
+
+message RecognizeBytesRequest {
+  string id = 1;
+  string language_code = 2;
+  bytes image_bytes = 3;
+  repeated Box boxes = 4;
+  string ocr_engine = 5;
+}
+
+message RecognizeBase64Request {
+  string id = 1;
+  string language_code = 2;
+  string base64_image = 3;
+  repeated Box boxes = 4;
+  string ocr_engine = 5;
+}
+
+message Vertex {
+  int32 x = 1;
+  int32 y = 2;
+}
+
+message Box {
+  Vertex bottom_left = 1;
+  Vertex bottom_right = 2;
+  Vertex top_left = 3;
+  Vertex top_right = 4;
+}
+
+message Result {
+  string text = 1;
+  float recognition_score = 2;
+  float classification_score = 3;
+  int32 classification_label = 4;
+  Box box = 5;
+  bool is_vertical = 6;
+}
+
+message ContextResolution {
+  int32 width = 1;
+  int32 height = 2;
+}
+
+message RecognizeDefaultResponse {
+  string id = 1;
+  repeated Result results = 2;
+  ContextResolution context_resolution = 3;
+}
+
+message GetSupportedLanguagesRequest {
+  string ocr_engine = 1;
+}
+
+message GetSupportedLanguagesResponse {
+  repeated string language_codes = 1;
+}
+
+message DetectRequest {
+  string id = 1;
+  string language_code = 2;
+  bool crop_image = 3;
+  bytes image_bytes = 4;
+  string ocr_engine = 5;
+}
+
+message DetectResult {
+  bytes image_bytes = 1;
+  Box box = 2;
+}
+
+message DetectResponse {
+  string id = 1;
+  repeated DetectResult results = 2;
+  ContextResolution context_resolution = 3;
+}
+
+message UpdatePpOcrSettingsRequest {
+  int32 max_image_width = 1;
+  int32 cpu_threads = 2;
+  string inference_runtime = 3;
+  double det_db_thresh = 4;
+  double det_db_box_thresh = 5;
+  double det_db_unclip_ratio = 6;
+  string det_db_score_mode = 7;
+  bool use_dilation = 8;
+  double cls_thresh = 9;
+}
+
+message UpdateSettingsResponse {
+  bool success = 1;
+}

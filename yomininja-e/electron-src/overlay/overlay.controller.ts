@@ -17,6 +17,7 @@ import os from 'os';
 import { ExternalWindow } from "../ocr_recognition/common/types";
 import { WindowProperties } from "../../gyp_modules/window_management/window_manager";
 import { httpServerPort, isWaylandDisplay, isWindows } from "../util/environment.util";
+import { httpServerReady } from "../common/server";
 import { appService } from "../app/app.index";
 
 const isMacOS = process.platform === 'darwin';
@@ -66,7 +67,7 @@ export class OverlayController {
         const settingsJson = (await this.overlayService.getActiveSettingsPreset())
             ?.toJson()
             
-        this.createOverlayWindow();
+        await this.createOverlayWindow();
         this.registersIpcHandlers();
         // this.registerGlobalShortcuts();
 
@@ -84,7 +85,7 @@ export class OverlayController {
         return this.overlayWindow;
     }
 
-    private createOverlayWindow( alwaysOnTop?: boolean ) {
+    private async createOverlayWindow( alwaysOnTop?: boolean ) {
 
         if ( alwaysOnTop !== undefined )
             this.overlayAlwaysOnTop = alwaysOnTop;
@@ -142,6 +143,9 @@ export class OverlayController {
             this.showResults = false;
             ipcMain.send( this.overlayWindow, 'user_command:toggle_results', false );
         });
+
+        if ( !isDev )
+            await httpServerReady;
 
         const url = isDev ?
             'http://localhost:8000/ocr-overlay':

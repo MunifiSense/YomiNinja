@@ -196,7 +196,7 @@ export class GoogleLensOcrGrpcAdapter implements OcrAdapter< GoogleLensOcrEngine
                     clientContext: {
 
                         // lens_overlay_platform.proto
-                        platform: lens.Platform.WEB, //! Required
+                        platform: lens.Platform.PLATFORM_WEB, //! Required
 
                         // lens_overlay_surface.proto
                         // surface:  lens.Surface.SURFACE_CHROMIUM, //! Optional

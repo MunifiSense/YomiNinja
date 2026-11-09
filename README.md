@@ -89,6 +89,29 @@ Notes:
 - [Apple's Vision Framework](https://developer.apple.com/documentation/vision)
 
 ## Building
+
+### Windows (x64) — recommended
+1. Clone the repository and install [Node.js](https://nodejs.org/) + [VCRedist](https://www.techpowerup.com/download/visual-c-redistributable-runtime-package-all-in-one/).
+2. Download a Windows build of [PPOCR-Inference-Service](https://github.com/matt-m-o/PPOCR-Inference-Service/releases) and extract it to:
+   ```
+   ./bin/win32/x64/ppocr/
+   ```
+3. Run the setup helper (npm install, OCR gRPC types, Chromium Lens protos → `lens_pb`):
+   ```commandline
+   setup-win-dev.bat
+   ```
+4. Build OCR python package + Electron installer (or reuse an existing `bin\win32\x64\py_ocr_service`):
+   ```commandline
+   build-win32-x64.bat
+   ```
+   Output installer: `yomininja-e\dist\YomiNinja Setup *.exe`
+
+Notes:
+- Google Lens **gRPC** needs local (gitignored) Chromium protos; `setup-win-dev.bat` fetches and generates them. Without that step, switch `adapters_registry.ts` back to `GoogleLensOcrAdapter` (HTTP).
+- `npm run dist` builds all arches; for a single Windows x64 installer prefer `build-win32-x64.bat` or `TARGET_ARCH=x64` with electron-builder as in that script.
+- Optional: place a [10ten](https://github.com/birchill/10ten-ja-reader/releases) Electron zip under `./yomininja-e/extensions/`.
+
+### Manual / other platforms
 1. Clone the git repository
     ```commandline
     git clone https://github.com/matt-m-o/YomiNinja.git && cd YomiNinja
@@ -105,8 +128,8 @@ Notes:
    
 3. Based on your platform, download and extract the latest build of [PPOCR-Inference-Service](https://github.com/matt-m-o/PPOCR-Inference-Service/releases) into the appropriate directory:
 
-    - Windows: `./bin/win32/ppocr`
-    - Linux: `./bin/linux/ppocr`
+    - Windows: `./bin/win32/x64/ppocr` (or `./bin/win32/ppocr` for older layouts)
+    - Linux: `./bin/linux/<arch>/ppocr`
 
 4. (optional) Download [10ten](https://github.com/birchill/10ten-ja-reader/releases) for Electron, and place the zip file into the following directory:
        
@@ -116,13 +139,16 @@ Notes:
     ```commandline
     cd yomininja-e && npm install --force
     ```
-6. Generate gRPC Protobuf types
+6. Generate gRPC Protobuf types (and Lens stubs on Windows):
     ```commandline
     npm run grpc-types
+    powershell -ExecutionPolicy Bypass -File .\scripts\fetch-lens-protos.ps1
     ```
 7. Build
     ```commandline
-    npm run dist
+    set TARGET_ARCH=x64
+    npm run build
+    npx cross-env TARGET_ARCH=x64 electron-builder --win nsis --x64 --config electron-builder.config.js
     ```
 
 

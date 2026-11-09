@@ -1,8 +1,18 @@
 import numpy as np
 import cv2
-from typing import List
+import torch
+from typing import List, Optional
 
 from comic_text_detector.inference import TextDetector
+
+def resolve_torch_device(device: Optional[str] = None) -> str:
+    if device:
+        return device
+    if torch.cuda.is_available():
+        return 'cuda'
+    if torch.backends.mps.is_available():
+        return 'mps'
+    return 'cpu'
 
 class TextLine:
     coordinates = []
@@ -31,9 +41,16 @@ class ComicTextDetector:
 
     def __init__(
         self,
-        model_path = '../models/comic_text_detector/comictextdetector.pt'
+        model_path = '../models/comic_text_detector/comictextdetector.pt',
+        device: Optional[str] = None
     ):
-        self.text_detector = TextDetector(model_path, input_size=1024, device='cpu', act='leaky')
+        self.device = resolve_torch_device(device)
+        self.text_detector = TextDetector(
+            model_path,
+            input_size=1024,
+            device=self.device,
+            act='leaky'
+        )
 
 
     def detect(self, image: np.ndarray) -> List[TextBlock]:
@@ -75,7 +92,7 @@ class ComicTextDetector:
 
         rot_rect = ((center_x, center_y), (w, h), angle)
         
-        points = np.int0(cv2.boxPoints(rot_rect))
+        points = np.asarray(cv2.boxPoints(rot_rect), dtype=np.int32)
 
         return [
             points[1],
