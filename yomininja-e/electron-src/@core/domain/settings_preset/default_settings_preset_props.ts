@@ -31,6 +31,7 @@ export function getDefaultSettingsPresetProps(): SettingsPresetProps {
                     border_radius: 7,
                     border_width: 1,
                     size_factor: 5,
+                    always_show_text: false,
                     text: {
                         color: "#ffffff", // White
                         font_size_factor: 100,
@@ -53,7 +54,21 @@ export function getDefaultSettingsPresetProps(): SettingsPresetProps {
                         },
                         generated_furigana: {
                             visibility: 'visible-on-line-hover'
-                        }
+                        },
+                        japanese_annotation: {
+                            furigana_enabled: false,
+                            jlpt_color_coding_enabled: false,
+                            known_jlpt_level: 'off',
+                            dim_known_tokens: false,
+                            palette: {
+                                N5: '#4caf50',
+                                N4: '#2196f3',
+                                N3: '#9c27b0',
+                                N2: '#ff9800',
+                                N1: '#f44336',
+                                unknown: '#9e9e9e',
+                            },
+                        },
                     },
                     selected_text: {
                         color: '#ffffff', // White

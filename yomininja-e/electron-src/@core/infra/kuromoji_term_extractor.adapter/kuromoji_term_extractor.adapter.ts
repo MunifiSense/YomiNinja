@@ -41,6 +41,13 @@ export class KuromojiTermExtractor implements TermExtractorAdapter {
         });
     }
 
+    tokenize( text: string ): kuromoji.IpadicFeatures[] {
+        if ( !this.tokenizer ) {
+            throw new Error( 'Kuromoji tokenizer is not initialized. Call init() first.' );
+        }
+        return this.tokenizer.tokenize( text );
+    }
+
     getTerms( input: GetTermsInput ): ExtractedTerms {
 
         const { text } = input;
@@ -53,7 +60,7 @@ export class KuromojiTermExtractor implements TermExtractorAdapter {
             return !term.includes('。')
         };        
 
-        const tokens = this.tokenizer.tokenize( text );
+        const tokens = this.tokenize( text );
         
         const standard: string[] = tokens.map( this.handleTokenForm )
             .filter( filter );

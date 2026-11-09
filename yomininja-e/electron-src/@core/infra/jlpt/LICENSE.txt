@@ -1,0 +1,3 @@
+﻿JLPT vocabulary data bundled in jlpt_vocab.json is derived from:
+https://github.com/elzup/jlpt-word-list
+MIT License — Copyright (c) 2020 Jamie Sinclair, Copyright (c) 2020 elzup

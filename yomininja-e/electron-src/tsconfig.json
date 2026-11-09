@@ -29,6 +29,6 @@
     "node_modules",
     "**/*.spec.ts"
   ],
-  "include": ["**/*.ts", "**/*.tsx", "**/*.js"],
+  "include": ["**/*.ts", "**/*.tsx", "**/*.js", "@core/infra/jlpt/*.json"],
   "assets": ["../**/*.proto"]
 }

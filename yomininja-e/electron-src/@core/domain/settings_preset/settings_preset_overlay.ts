@@ -3,7 +3,25 @@ export type OverlayOcrRegionVisuals = {
 };
 
 export type TextPositioningMode = 'block-based' | 'line-based' | 'word-based' | 'character-based';
-export type GeneratedFuriganaVisibility = 'visible' | 'hidden' | 'visible-on-line-hover' | 'visible-on-word-hover';
+export type GeneratedFuriganaVisibility = 'visible' | 'invisible' | 'hidden' | 'visible-on-line-hover' | 'visible-on-word-hover';
+export type JlptKnownLevel = 'off' | 'N5' | 'N4' | 'N3' | 'N2' | 'N1';
+
+export type JlptColorPalette = {
+    N5: string;
+    N4: string;
+    N3: string;
+    N2: string;
+    N1: string;
+    unknown: string;
+};
+
+export type JapaneseAnnotationSettings = {
+    furigana_enabled: boolean;
+    jlpt_color_coding_enabled: boolean;
+    known_jlpt_level: JlptKnownLevel;
+    dim_known_tokens: boolean;
+    palette: JlptColorPalette;
+};
 
 export type OverlayOcrItemBoxVisuals = {
     inactive_border_color: string;
@@ -13,6 +31,8 @@ export type OverlayOcrItemBoxVisuals = {
     background_color: string;
     background_color_inactive: string;
     size_factor: number; // % 0 .. 100
+    /** When true, OCR text is always visible (not only on box hover). */
+    always_show_text?: boolean;
     text: {
         color: string;
         font_size_factor: number; // % 0 .. 100
@@ -35,7 +55,8 @@ export type OverlayOcrItemBoxVisuals = {
         };
         generated_furigana: {
             visibility: GeneratedFuriganaVisibility
-        }
+        };
+        japanese_annotation?: JapaneseAnnotationSettings;
     };
     selected_text: {
         color: string;

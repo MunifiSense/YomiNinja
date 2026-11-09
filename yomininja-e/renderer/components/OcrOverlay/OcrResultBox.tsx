@@ -61,6 +61,8 @@ export default function OcrResultBox( props: {
     const lineCount = ocrItem.text.length;
     const isMultiline = lineCount > 1;
     const generatedFuriganaSettings = ocrItemBoxVisuals.text?.generated_furigana;
+    const japaneseAnnotation = ocrItemBoxVisuals?.text?.japanese_annotation;
+    const jlptPalette = japaneseAnnotation?.palette;
     
     const [ alignItems, setAlignItems ] = useState( 'center' );
     const [ includesGeneratedFurigana, setIncludesGeneratedFurigana ] = useState( false );
@@ -74,6 +76,21 @@ export default function OcrResultBox( props: {
 
     }, [ ocrItem ] );
 
+
+    useEffect( () => {
+        const hasOcrFurigana = Boolean(
+            japaneseAnnotation?.furigana_enabled &&
+            ocrItem.text?.some( line =>
+                line.segments?.some( segment => segment.furigana?.length )
+            )
+        );
+
+        if ( hasOcrFurigana ) {
+            setIncludesGeneratedFurigana( true );
+            if ( alignItems !== 'flex-start' )
+                setAlignItems( 'flex-start' );
+        }
+    }, [ ocrItem, japaneseAnnotation?.furigana_enabled ] );
 
     useEffect( () => {
 
@@ -181,18 +198,31 @@ export default function OcrResultBox( props: {
         }
     }
 
+    const alwaysShowText = Boolean( ocrItemBoxVisuals?.always_show_text );
+
     const Box = styled( BaseOcrResultBox )({
+        '--jlpt-n5': jlptPalette?.N5 || '#4caf50',
+        '--jlpt-n4': jlptPalette?.N4 || '#2196f3',
+        '--jlpt-n3': jlptPalette?.N3 || '#9c27b0',
+        '--jlpt-n2': jlptPalette?.N2 || '#ff9800',
+        '--jlpt-n1': jlptPalette?.N1 || '#f44336',
+        '--jlpt-unknown': jlptPalette?.unknown || '#9e9e9e',
+        ...( alwaysShowText ? activeBoxCss : {} ),
         "&:hover": activeBoxCss,
         "&.editable": activeBoxCss,
-        backgroundColor: ocrItemBoxVisuals.background_color_inactive,
-        outlineColor: ocrItemBoxVisuals?.inactive_border_color || 'red',
+        backgroundColor: alwaysShowText
+            ? ( ocrItemBoxVisuals?.background_color || 'black' )
+            : ocrItemBoxVisuals.background_color_inactive,
+        outlineColor: alwaysShowText
+            ? ( ocrItemBoxVisuals?.active_border_color || 'red' )
+            : ( ocrItemBoxVisuals?.inactive_border_color || 'red' ),
         outlineWidth: ocrItemBoxVisuals?.border_width || '0px',
         borderRadius: ocrItemBoxVisuals?.border_radius || '0rem',
         writingMode: isVertical ? 'vertical-rl' :'inherit',
         textOrientation: isVertical ? 'upright' :'inherit',
         fontSize: fontSize + 'px',
         lineHeight: fontSize + 'px',
-        contentVisibility: 'hidden',
+        contentVisibility: alwaysShowText ? 'visible' : 'hidden',
         alignItems: alignItems,
         flexDirection: isVertical ? 'column' : 'column', // why booth column?
         justifyContent: isMultiline ? 'space-between' : 'center',
@@ -237,11 +267,21 @@ export default function OcrResultBox( props: {
         ocrItemBoxVisuals.text?.positioning?.mode === 'block-based'
     ) {
         const firstLine = {
-            ...ocrItem.text[0]
+            ...ocrItem.text[0],
+            segments: ocrItem.text[0].segments
+                ? [ ...ocrItem.text[0].segments ]
+                : undefined,
         };
 
         for( let i=1; i < ocrItem.text.length; i++ ) {
-            firstLine.content += `\u200B${ocrItem.text[i].content}`
+            firstLine.content += `\u200B${ocrItem.text[i].content}`;
+            if ( ocrItem.text[i].segments?.length ) {
+                firstLine.segments = [
+                    ...( firstLine.segments || [] ),
+                    { surface: '\u200B', jlpt_level: 'unknown' as const },
+                    ...ocrItem.text[i].segments,
+                ];
+            }
         }
 
         text = [firstLine];

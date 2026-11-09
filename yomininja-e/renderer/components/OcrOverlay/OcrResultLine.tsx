@@ -6,6 +6,7 @@ import { ProfileContext } from "../../context/profile.provider";
 import { FontStyle, getBestFontStyle, getDefaultFontFamily, getSymbolPositionOffset, isEolCharacter } from "../../utils/text_utils";
 import OcrWordsContainer from "./OcrWordsContainer";
 import OcrSymbolsContainer from "./OcrSymbolsContainer";
+import OcrAnnotatedLineContent, { shouldRenderAnnotatedContent } from "./OcrAnnotatedLineContent";
 
 
 export type OcrResultLineProps = {
@@ -385,13 +386,27 @@ export default function OcrResultLine( props: OcrResultLineProps ) {
                     // border: 'solid 1px green'
                 }}
             >
-                { line.content.trim()
-                    .split('\u200B')
-                    .flatMap( (part, i, arr) => (
-                        i < arr.length - 1
-                            ? [part, <wbr key={i} />]
-                            : [part]
-                    ))
+                {
+                    ( () => {
+                        const annotation = ocrItemBoxVisuals.text?.japanese_annotation;
+                        const segments = line.segments;
+                        if ( shouldRenderAnnotatedContent( segments, annotation ) ) {
+                            return (
+                                <OcrAnnotatedLineContent
+                                    segments={ segments as NonNullable<typeof segments> }
+                                    annotation={ annotation as NonNullable<typeof annotation> }
+                                />
+                            );
+                        }
+
+                        return line.content.trim()
+                            .split('\u200B')
+                            .flatMap( (part, i, arr) => (
+                                i < arr.length - 1
+                                    ? [part, <wbr key={i} />]
+                                    : [part]
+                            ));
+                    } )()
                 }
                 { ocrItemBoxVisuals?.text?.sentence_ending_punctuation?.enabled && EOLSymbol }
             </Line>

@@ -36,11 +36,28 @@ export type OcrTextWordScalable = {
     letter_spacing: number;
 };
 
+export type JlptLevel = 'N5' | 'N4' | 'N3' | 'N2' | 'N1' | 'unknown';
+
+export type OcrTextFuriganaRange = {
+    text: string;
+    startIdx: number;
+    endIdx: number;
+};
+
+export type OcrTextLineSegment = {
+    surface: string;
+    reading?: string;
+    basic_form?: string;
+    furigana?: OcrTextFuriganaRange[];
+    jlpt_level: JlptLevel;
+};
+
 export type OcrTextLineScalable = {
     content: string;
     box?: OcrResultBoxScalable;
     words?: OcrTextWordScalable[];
     symbols?: OcrTextLineSymbolScalable[];
+    segments?: OcrTextLineSegment[];
 };
 
 export interface OcrItemScalable {

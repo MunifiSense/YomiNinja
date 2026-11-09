@@ -2,6 +2,7 @@ import { desktopCapturer } from "electron";
 import { TaskbarProperties, WindowManager, WindowProperties } from "../../gyp_modules/window_management/window_manager";
 import { GetSupportedLanguagesUseCase } from "../@core/application/use_cases/get_supported_languages/get_supported_languages.use_case";
 import { RecognizeImageUseCase } from "../@core/application/use_cases/recognize_image/recognize_image.use_case";
+import { AnnotateJapaneseOcrTextUseCase } from "../@core/application/use_cases/annotate_japanese_ocr_text/annotate_japanese_ocr_text.use_case";
 import { OcrResultScalable } from "../@core/domain/ocr_result_scalable/ocr_result_scalable";
 import { GetActiveSettingsPresetUseCase } from "../@core/application/use_cases/get_active_settings_preset/get_active_settings_preset.use_case";
 import { getActiveProfile, windowManager } from "../@core/infra/app_initialization";
@@ -13,6 +14,7 @@ import { GetSupportedLanguagesUseCaseInstance, RecognizeImageUseCaseInstance, Re
 import { PpOcrAdapter } from "../@core/infra/ocr/ppocr.adapter/ppocr.adapter";
 import { OcrEngineSettingsU } from "../@core/infra/types/entity_instance.types";
 import { OcrEngineSettings } from "../@core/domain/settings_preset/settings_preset";
+import { getDefaultSettingsPresetProps } from "../@core/domain/settings_preset/default_settings_preset_props";
 import isDev from "electron-is-dev";
 
 
@@ -28,7 +30,8 @@ export class OcrRecognitionService < TOcrSettings extends OcrEngineSettings = Oc
     private recognizeImageUseCase: RecognizeImageUseCaseInstance;
     private recognizeSelectionUseCase: RecognizeSelectionUseCaseInstance;
     private getSupportedLanguagesUseCase: GetSupportedLanguagesUseCaseInstance;
-    private getActiveSettingsPresetUseCase: GetActiveSettingsPresetUseCase;    
+    private getActiveSettingsPresetUseCase: GetActiveSettingsPresetUseCase;
+    private annotateJapaneseOcrTextUseCase?: AnnotateJapaneseOcrTextUseCase;
     private ocrAdapters: OcrAdapter< TOcrSettings >[];    
 
     constructor(
@@ -37,6 +40,7 @@ export class OcrRecognitionService < TOcrSettings extends OcrEngineSettings = Oc
             recognizeSelectionUseCase: RecognizeSelectionUseCaseInstance;
             getSupportedLanguagesUseCase: GetSupportedLanguagesUseCaseInstance;
             getActiveSettingsPresetUseCase: GetActiveSettingsPresetUseCase;
+            annotateJapaneseOcrTextUseCase?: AnnotateJapaneseOcrTextUseCase;
             ocrAdapters: OcrAdapter< TOcrSettings >[];
         }
     ){
@@ -44,6 +48,7 @@ export class OcrRecognitionService < TOcrSettings extends OcrEngineSettings = Oc
         this.recognizeSelectionUseCase = input.recognizeSelectionUseCase;
         this.getSupportedLanguagesUseCase = input.getSupportedLanguagesUseCase;
         this.getActiveSettingsPresetUseCase = input.getActiveSettingsPresetUseCase;
+        this.annotateJapaneseOcrTextUseCase = input.annotateJapaneseOcrTextUseCase;
         this.ocrAdapters = input.ocrAdapters;
     }
 
@@ -71,12 +76,17 @@ export class OcrRecognitionService < TOcrSettings extends OcrEngineSettings = Oc
 
         // if ( !isValidImage ) return null;
 
-        return await this.recognizeImageUseCase.execute({
+        const result = await this.recognizeImageUseCase.execute({
             imageBuffer,
             profileId: profileId,
             ocrAdapterName: engineName,
             autoMode: Boolean( input.autoMode ),
         });
+
+        if ( result )
+            await this.annotateJapaneseResult( result );
+
+        return result;
     }
 
     async getSelectiveResult(
@@ -93,7 +103,42 @@ export class OcrRecognitionService < TOcrSettings extends OcrEngineSettings = Oc
             regionId: input.regionId,
         });
 
+        if ( result )
+            await this.annotateJapaneseResult( result );
+
         return result;
+    }
+
+    private async annotateJapaneseResult( result: OcrResultScalable ): Promise< void > {
+        if ( !this.annotateJapaneseOcrTextUseCase )
+            return;
+
+        try {
+            const preset = await this.getActiveSettingsPreset();
+            const defaults = getDefaultSettingsPresetProps()
+                .overlay.visuals.ocr_item_box.text.japanese_annotation!;
+            const saved = preset?.overlay?.visuals?.ocr_item_box?.text?.japanese_annotation;
+            const options = {
+                furigana_enabled: saved?.furigana_enabled ?? defaults.furigana_enabled,
+                jlpt_color_coding_enabled: saved?.jlpt_color_coding_enabled ?? defaults.jlpt_color_coding_enabled,
+                known_jlpt_level: saved?.known_jlpt_level ?? defaults.known_jlpt_level,
+                dim_known_tokens: saved?.dim_known_tokens ?? defaults.dim_known_tokens,
+                palette: {
+                    ...defaults.palette,
+                    ...saved?.palette,
+                },
+            };
+
+            if ( !options.furigana_enabled && !options.jlpt_color_coding_enabled )
+                return;
+
+            await this.annotateJapaneseOcrTextUseCase.execute({
+                ocrResult: result,
+                options,
+            });
+        } catch ( error ) {
+            console.error( 'Japanese OCR annotation failed:', error );
+        }
     }
 
     async getActiveSettingsPreset() {
