@@ -271,6 +271,10 @@ export default function HomeContent() {
                         }}
                     >
                         <li>
+                            <strong> Added MeikiOCR — a local offline engine trained for Japanese video game and visual novel text, with optional CUDA acceleration. </strong>
+                        </li>
+
+                        <li>
                             <strong> Lens OCR engine is functional again. </strong>
                         </li>
 

@@ -29,6 +29,9 @@ export default function AppSettingsHotkeys() {
     const mangaOcrSettings = getOcrEngineSettings('MangaOcrAdapter');
     const mangaOcrDefaultSettings = getOcrEngineSettings('MangaOcrAdapter', true);
 
+    const meikiOcrSettings = getOcrEngineSettings('MeikiOcrAdapter');
+    const meikiOcrDefaultSettings = getOcrEngineSettings('MeikiOcrAdapter', true);
+
     const cloudVisionSettings = getOcrEngineSettings('CloudVisionOcrAdapter');
     const cloudVisionDefaultSettings = getOcrEngineSettings('CloudVisionOcrAdapter', true);
 
@@ -53,6 +56,7 @@ export default function AppSettingsHotkeys() {
     const appleVisionKeys = stringToHotkeyCombination( appleVisionSettings?.hotkey );
     const paddleOcrKeys = stringToHotkeyCombination( ppOcrSettings?.hotkey );
     const mangaOcrKeys = stringToHotkeyCombination( mangaOcrSettings?.hotkey );
+    const meikiOcrKeys = stringToHotkeyCombination( meikiOcrSettings?.hotkey );
     const cloudVisionKeys = stringToHotkeyCombination( cloudVisionSettings?.hotkey );
     const googleLensKeys = stringToHotkeyCombination( googleLensSettings?.hotkey );
 
@@ -214,6 +218,22 @@ export default function AppSettingsHotkeys() {
                     }}
                     commandLine={ getCmdLine('/ocr/mangaocr') }
                 />
+
+                { meikiOcrSettings &&
+                    <HotkeyFields
+                        label='MeikiOCR'
+                        keyCombination={ meikiOcrKeys }
+                        defaultKeys={meikiOcrDefaultSettings?.hotkey}
+                        onChangeHandler={ ( input?: string[]  ) => {
+                            if ( !input ) return;
+                            updateActivePresetOcrEngine({
+                                ...meikiOcrSettings,
+                                hotkey: hotkeyCombinationToString( input )
+                            });
+                        }}
+                        commandLine={ getCmdLine('/ocr/meikiocr') }
+                    />
+                }
 
                 <HotkeyFields
                     label='Google Lens'

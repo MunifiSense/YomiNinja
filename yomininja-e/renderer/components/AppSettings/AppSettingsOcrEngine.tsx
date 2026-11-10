@@ -13,6 +13,8 @@ import GoogleLensSettings from "./OcrSettings/GoogleLensSettings";
 import { GoogleLensOcrEngineSettings } from "../../../electron-src/@core/infra/ocr/google_lens_ocr.adapter/google_lens_ocr_settings";
 import { MangaOcrEngineSettings } from "../../../electron-src/@core/infra/ocr/manga_ocr.adapter/manga_ocr_settings";
 import MangaOcrSettings from "./OcrSettings/MangaOcrSettings";
+import { MeikiOcrEngineSettings } from "../../../electron-src/@core/infra/ocr/meiki_ocr.adapter/meiki_ocr_settings";
+import MeikiOcrSettings from "./OcrSettings/MeikiOcrSettings";
 
 
 const TabItem = styled(Tab)({
@@ -39,6 +41,9 @@ export default function AppSettingsOcrEngine() {
 
     const mangaOcrSettings = activeSettingsPreset?.ocr_engines
         .find( item => item.ocr_adapter_name === 'MangaOcrAdapter' ) as MangaOcrEngineSettings;
+
+    const meikiOcrSettings = activeSettingsPreset?.ocr_engines
+        .find( item => item.ocr_adapter_name === 'MeikiOcrAdapter' ) as MeikiOcrEngineSettings;
 
     const [ tab, setTab ] = useState(
         ppOcrSettings ? '1' : '2'
@@ -70,6 +75,7 @@ export default function AppSettingsOcrEngine() {
                         <TabItem label="Google Cloud Vision" value="2"/>
                         <TabItem label="Google Lens" value="3"/>
                         <TabItem label="MangaOCR" value="4"/>
+                        <TabItem label="MeikiOCR" value="5"/>
                     </TabList>
                 </Box>
 
@@ -93,6 +99,9 @@ export default function AppSettingsOcrEngine() {
                     </TabPanel>
                     <TabPanel value="4" >
                         <MangaOcrSettings ocrEngineSettings={mangaOcrSettings}/>
+                    </TabPanel>
+                    <TabPanel value="5" >
+                        <MeikiOcrSettings ocrEngineSettings={meikiOcrSettings}/>
                     </TabPanel>
                 </Box>
                 

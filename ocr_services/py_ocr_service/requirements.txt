@@ -7,6 +7,10 @@ opencv-python
 
 transformers
 manga-ocr
+# MeikiOCR (VN/game OCR). Pin opencv-headless to stay compatible with numpy==1.26.4.
+meikiocr
+opencv-python-headless==4.10.0.84
+onnxruntime
 
 # comic-text-detector requirements
 torchvision

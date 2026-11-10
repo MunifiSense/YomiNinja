@@ -659,69 +659,103 @@ export class PyOcrService {
         const { option, callback, logger } = input;
 
         let ended = false;
+        const isOnnxRuntimeInstall = option.installCommand.includes( 'onnxruntime' );
+
+        const finish = async ( success: boolean, error?: Error ) => {
+            if ( ended ) return;
+            ended = true;
+
+            try {
+                await this.enable();
+            } catch ( enableError ) {
+                console.error( enableError );
+            }
+
+            if ( callback )
+                callback( success, error );
+        };
 
         try {
-            // this.killServiceProcess();
-            // this.status = OcrAdapterStatus.Restarting;
-            // this.serviceProcess.kill('SIGTERM');
             this.disable();
 
             const pyExecutablePath = join( this.serviceRoot + `/python/${this.pyExecutableName}` );
+            const cwd = path.dirname( pyExecutablePath );
 
             const uninstallCmd = option.installCommand
                 .split(' --index-url')[0]
                 .replace('install', 'uninstall');
-    
-            const uninstallProcess = spawnSync(
+
+            // onnxruntime and onnxruntime-gpu conflict; always remove both before switching.
+            const uninstallArgs = isOnnxRuntimeInstall
+                ? [ '-u', '-m', 'pip', 'uninstall', 'onnxruntime', 'onnxruntime-gpu', '-y' ]
+                : [ '-u', '-m', ...uninstallCmd.split(' '), '-y' ];
+
+            spawnSync(
                 pyExecutablePath,
-                [ '-u', '-m', ...uninstallCmd.split(' '), '-y'],
-                {
-                    cwd: path.dirname(pyExecutablePath),
-                    // detached: os.platform() === 'win32',
-                },
+                uninstallArgs,
+                { cwd },
             );
-            
+
+            // Detached pip on Windows often never emits a reliable exit event (stuck "Please wait..." popup).
+            // Keep detached only for the existing Torch install flow.
             const installationProcess = spawn(
                 pyExecutablePath,
                 [ '-u', '-m', ...option.installCommand.split(' ') ],
                 {
-                    cwd: path.dirname(pyExecutablePath),
-                    detached: os.platform() === 'win32',
+                    cwd,
+                    detached: !isOnnxRuntimeInstall && os.platform() === 'win32',
                 },
             );
-    
 
-    
-            installationProcess.stdout.on( 'data', async ( data: string ) => {
+            installationProcess.stdout?.on( 'data', ( data: string ) => {
                 if ( logger )
                     logger( data.toString() );
             });
-    
-            installationProcess.on( 'error', async ( data ) => {
-                console.log("installationProcess ERROR");
-                await this.enable();
-                if ( callback )
-                    callback( false, data );
-    
-                ended = true;
+
+            installationProcess.stderr?.on( 'data', ( data: string ) => {
+                if ( logger )
+                    logger( data.toString() );
             });
-    
-            installationProcess.on( 'exit', async ( data ) => {
-                console.log("installationProcess EXIT");
-                await this.enable();
-                if ( callback && !ended )
-                    callback( true );
-                
-                ended = true;
+
+            installationProcess.on( 'error', async ( error ) => {
+                console.log( 'installationProcess ERROR' );
+                await finish( false, error );
+            });
+
+            installationProcess.on( 'exit', async ( code ) => {
+                console.log( 'installationProcess EXIT', code );
+
+                let success = code === 0;
+
+                // Swapping ONNX packages uninstalls meikiocr (depends on onnxruntime).
+                // Restore it without letting pip pull CPU onnxruntime over a GPU install.
+                if ( success && isOnnxRuntimeInstall ) {
+                    const restoreMeiki = spawnSync(
+                        pyExecutablePath,
+                        [
+                            '-u', '-m', 'pip', 'install',
+                            'meikiocr', '--no-deps',
+                            'huggingface-hub', 'opencv-python-headless', 'tqdm', 'PyYAML', 'httpx',
+                        ],
+                        { cwd, encoding: 'utf-8' },
+                    );
+
+                    if ( logger && restoreMeiki.stdout )
+                        logger( restoreMeiki.stdout );
+                    if ( logger && restoreMeiki.stderr )
+                        logger( restoreMeiki.stderr );
+
+                    if ( restoreMeiki.status !== 0 ) {
+                        console.error( 'Failed to restore meikiocr after ONNX Runtime install' );
+                        success = false;
+                    }
+                }
+
+                await finish( success );
             });
         } catch (error) {
             console.error(error);
-            if ( !ended ) {
-                this.enable( () => {
-                    if (callback)
-                        callback(false);
-                });
-            }
+            finish( false, error instanceof Error ? error : new Error( String(error) ) );
         }
     }
 

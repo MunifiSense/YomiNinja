@@ -193,6 +193,7 @@ export class OcrRecognitionService < TOcrSettings extends OcrEngineSettings = Oc
             'CloudVisionOcrAdapter': 'Google Cloud Vision',
             'GoogleLensOcrAdapter': 'Google Lens',
             'MangaOcrAdapter': 'MangaOCR',
+            'MeikiOcrAdapter': 'MeikiOCR',
             'AppleVisionAdapter': 'Apple Vision',
         };
 

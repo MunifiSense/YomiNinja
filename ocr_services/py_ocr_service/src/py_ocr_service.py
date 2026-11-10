@@ -25,6 +25,13 @@ except ImportError:
     print('MangaOcrService ImportError')
     pass
 
+try:
+    from meiki_ocr_service.meiki_ocr_service import MeikiOcrService
+except ImportError:
+    print('MeikiOcrService ImportError')
+    MeikiOcrService = None
+    pass
+
 if IS_MAC_OS:
     from apple_vision_service.apple_vision_service import AppleVisionService
     from apple_vision_service.apple_vision_kit_service import AppleVisionKitService
@@ -51,12 +58,16 @@ class Service( service_grpc.OCRServiceServicer ):
     keep_alive_timeout_seconds = 60
 
     manga_ocr_service = None
+    meiki_ocr_service = None
     apple_vision_service = None
     apple_vision_kit_service = None
     motion_detection_service = MotionDetectionService()
 
     if 'torch' in sys.modules:
         manga_ocr_service = MangaOcrService()
+
+    if MeikiOcrService is not None:
+        meiki_ocr_service = MeikiOcrService()
 
     def __init__(self, server, executor: ProcessPoolExecutor = None, keep_alive_timeout_seconds = 60 ):
         self.server = server
@@ -117,6 +128,16 @@ class Service( service_grpc.OCRServiceServicer ):
                         boxes= request.boxes,
                         detection_only= request.detection_only,
                     )
+
+                case 'MeikiOCR':
+                    if self.meiki_ocr_service:
+                        response = self.meiki_ocr_service.recognize(
+                            image= image,
+                            request_id= request.id,
+                            language_code= request.language_code,
+                        )
+                    else:
+                        print('MeikiOCR is not available')
 
                 case 'AppleVision':
                     results = self.apple_vision_service.recognize(
@@ -203,6 +224,9 @@ class Service( service_grpc.OCRServiceServicer ):
             case 'MangaOCR':
                 language_codes.append( 'ja-JP' )
 
+            case 'MeikiOCR':
+                language_codes.append( 'ja-JP' )
+
             case 'AppleVision':
                 language_codes = self.apple_vision_service.getSupportedLanguages()
             
@@ -271,6 +295,12 @@ class Service( service_grpc.OCRServiceServicer ):
         match request.ocr_engine:
             case 'MangaOCR':
                 options = self.manga_ocr_service.get_hardware_acceleration_options()
+
+            case 'MeikiOCR':
+                if self.meiki_ocr_service:
+                    options = self.meiki_ocr_service.get_hardware_acceleration_options()
+                else:
+                    print('MeikiOCR is not available')
 
             case 'AppleVision':
                 pass # options = self.apple_vision_service.get_hardware_acceleration_options()

@@ -33,6 +33,7 @@ import { isLinux, isWaylandDisplay, isWindows, isMacOS } from "../util/environme
 import { googleLensOcrAdapterName } from "../@core/infra/ocr/google_lens_ocr.adapter/google_lens_ocr_settings";
 import { ppOcrAdapterName } from "../@core/infra/ocr/ppocr.adapter/ppocr_settings";
 import { mangaOcrAdapterName } from "../@core/infra/ocr/manga_ocr.adapter/manga_ocr_settings";
+import { meikiOcrAdapterName } from "../@core/infra/ocr/meiki_ocr.adapter/meiki_ocr_settings";
 import { appleVisionAdapterName } from "../@core/infra/ocr/apple_vision.adapter/apple_vision_settings";
 import { cloudVisionOcrAdapterName } from "../@core/infra/ocr/cloud_vision_ocr.adapter/cloud_vision_ocr_settings";
 import url from "url";
@@ -480,6 +481,10 @@ export class AppController {
         }
         else if ( command === 'ocr/mangaocr' ) {
             await this.handleOcrCommand({ engineName: mangaOcrAdapterName });
+            return true;
+        }
+        else if ( command === 'ocr/meikiocr' ) {
+            await this.handleOcrCommand({ engineName: meikiOcrAdapterName });
             return true;
         }
         else {

@@ -32,7 +32,8 @@ import { RecognizeSelectionUseCase } from "../../application/use_cases/recognize
 export let enabledOcrEngines: symbol[] = [
     Registry.CloudVisionOcrAdapter,
     Registry.GoogleLensOcrAdapter,
-    Registry.MangaOcrAdapter
+    Registry.MangaOcrAdapter,
+    Registry.MeikiOcrAdapter,
 ];
 if ( process.platform !== 'darwin' ) {
     enabledOcrEngines = [
