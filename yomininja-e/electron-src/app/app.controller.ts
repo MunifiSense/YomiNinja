@@ -637,13 +637,33 @@ export class AppController {
 
         ipcMain.send( this.overlayWindow, 'user_command:toggle_results', false );
         
+        let wgcAttempted = false;
+
         if ( !input.image ) {
             this.previousOcrCommandData = input;
-            const screenshotSuccess = screenCapturerController.screenshot({
-                captureSource: this.activeCaptureSource
-            });
 
-            if ( screenshotSuccess ) return;
+            // Windows: prefer one-shot WGC before the slower WebRTC capturer.
+            // PrintScreen still arrives with input.image and bypasses this path.
+            if ( isWindows ) {
+                await this.handleCaptureSourceSelection();
+                wgcAttempted = true;
+                console.time( 'Screenshot time' );
+                image = await this.appService.tryWgcCapture({
+                    display: this.captureSourceDisplay,
+                    window: this.captureSourceWindow,
+                });
+                console.timeEnd( 'Screenshot time' );
+                if ( image )
+                    console.log( 'Screenshot backend: WGC' );
+            }
+
+            if ( !image ) {
+                const screenshotSuccess = screenCapturerController.screenshot({
+                    captureSource: this.activeCaptureSource
+                });
+
+                if ( screenshotSuccess ) return;
+            }
         }
         ipcMain.send( this.overlayWindow, 'ocr:processing_started' );
         
@@ -658,7 +678,9 @@ export class AppController {
             image,
             display: this.captureSourceDisplay,
             window: this.captureSourceWindow,
-            autoCrop
+            autoCrop,
+            // Avoid a second WGC attempt when hotkey already tried it.
+            preferWgc: !wgcAttempted,
         });
 
         if ( !image ) {

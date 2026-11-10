@@ -24,7 +24,7 @@
     "build": "npm run build-renderer && npm run build-electron",
     "copy-assets": "node ./copy_assets.js",
     "install-app-deps": "npx @electron/rebuild install-app-deps",
-    "pack-app": "npm run build && electron-builder --dir",
+    "pack-app": "npm run build && cross-env TARGET_ARCH=x64 electron-builder --dir --config electron-builder.config.js",
     "dist": "npm run generate-licenses && npm run build && npm run dist:arm64 && npm run dist:x64",
     "dist:x64": "cross-env TARGET_ARCH=x64 electron-builder --config electron-builder.config.js",
     "dist:x64-cuda": "cross-env TARGET_ARCH=x64 ML_HW_ACCELERATION=cuda electron-builder --config electron-builder.config.js",
@@ -36,7 +36,7 @@
     "grpc-types": "proto-loader-gen-types --longs=String --enums=String --defaults --keep-case --oneofs --grpcLib=@grpc/grpc-js --outDir=./grpc/rpc ../ocr_services/protos/ocr_service.proto",
     "grpc-lens": "pbjs -t static-module -o ./grpc/rpc/lens/lens_pb.js ./grpc/lens_proto/*.proto",
     "grpc-lens-types": "npm run grpc-lens && pbts -o ./grpc/rpc/lens/lens_pb.d.ts ./grpc/rpc/lens/lens_pb.js",
-    "gyp-build": "node-gyp clean && node-gyp configure && node-gyp build",
+    "gyp-build": "node-gyp clean && node-gyp configure --msvs_version=2019 && node-gyp build",
     "generate-licenses": "npx generate-license-file --input package.json --output third-party-licenses.txt --overwrite",
     "types-workaround": "node ./types/types_workaround.js",
     "apply-patches": "node ./patches/node_modules.js"

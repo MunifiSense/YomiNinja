@@ -1,12 +1,17 @@
 import { desktopCapturer } from "electron";
 import { TaskbarProperties } from "../../gyp_modules/window_management/window_manager";
+import {
+    captureMonitorPng,
+    captureWindowPng,
+    isWgcCaptureAvailable,
+} from "../../gyp_modules/wgc_capture/win32/wgc_capture_win32";
 import { GetActiveSettingsPresetUseCase } from "../@core/application/use_cases/get_active_settings_preset/get_active_settings_preset.use_case";
 import { getActiveProfile, windowManager } from "../@core/infra/app_initialization";
 import { CaptureSource, ExternalWindow } from "./types";
 import { screen } from 'electron';
 import sharp from "sharp";
 const isMacOs = process.platform === 'darwin';
-import { isLinux, isMacOS, isWaylandDisplay } from "../util/environment.util";
+import { isLinux, isMacOS, isWaylandDisplay, isWindows } from "../util/environment.util";
 
 
 export const entireScreenAutoCaptureSource: CaptureSource = {
@@ -157,13 +162,24 @@ export class AppService {
         display?: Electron.Display;
         window?: ExternalWindow;
         autoCrop?: boolean;
+        /** When false, skip WGC and use desktopCapturer only (e.g. after an earlier WGC miss). */
+        preferWgc?: boolean;
     }): Promise< Buffer | undefined > {
 
-        let { image, display, window, autoCrop } = input;
+        let { image, display, window, autoCrop, preferWgc = true } = input;
 
         if ( !image ) {
             console.time("Screenshot time");
-            image = await this.takeScreenshot({ display, window });
+            if ( preferWgc ) {
+                image = await this.tryWgcCapture({ display, window });
+                if ( image )
+                    console.log( 'Screenshot backend: WGC' );
+            }
+            if ( !image ) {
+                image = await this.takeScreenshotDesktopCapturer({ display, window });
+                if ( image )
+                    console.log( 'Screenshot backend: desktopCapturer' );
+            }
             console.log()
             console.timeEnd("Screenshot time");
             console.log()
@@ -176,7 +192,76 @@ export class AppService {
         return image;
     }
 
-    private async takeScreenshot( input: { display?: Electron.Display, window?: ExternalWindow }): Promise< Buffer | undefined > {
+    /** One-shot Windows.Graphics.Capture; returns undefined on non-Windows / miss / black frame. */
+    async tryWgcCapture( input: {
+        display?: Electron.Display;
+        window?: ExternalWindow;
+    }): Promise< Buffer | undefined > {
+
+        if ( !isWindows || !isWgcCaptureAvailable() )
+            return undefined;
+
+        const { window, display } = input;
+
+        try {
+            if ( window?.id ) {
+                const image = await captureWindowPng( window.id );
+                if ( image && !await this.isLikelyBlankCapture( image ) )
+                    return image;
+                if ( image )
+                    console.warn( 'WGC window capture looked blank; falling back' );
+                return undefined;
+            }
+
+            if ( display ) {
+                const bounds = display.bounds;
+                const image = await captureMonitorPng({
+                    x: bounds.x,
+                    y: bounds.y,
+                    width: bounds.width,
+                    height: bounds.height,
+                });
+                if ( image && !await this.isLikelyBlankCapture( image ) )
+                    return image;
+                if ( image )
+                    console.warn( 'WGC monitor capture looked blank; falling back' );
+            }
+        } catch ( error ) {
+            console.warn( 'WGC capture path failed:', error );
+        }
+
+        return undefined;
+    }
+
+    private async isLikelyBlankCapture( image: Buffer ): Promise< boolean > {
+        try {
+            const { data, info } = await sharp( image )
+                .ensureAlpha()
+                .raw()
+                .toBuffer({ resolveWithObject: true });
+
+            const pixels = info.width * info.height;
+            if ( !pixels )
+                return true;
+
+            // Sample every Nth pixel; treat near-black as blank (protected/black WGC frames).
+            const step = Math.max( 1, Math.floor( pixels / 4096 ) );
+            let lit = 0;
+            for ( let i = 0; i < pixels; i += step ) {
+                const o = i * info.channels;
+                if ( data[o] > 8 || data[o + 1] > 8 || data[o + 2] > 8 )
+                    lit++;
+            }
+            return lit < 4;
+        } catch {
+            return false;
+        }
+    }
+
+    private async takeScreenshotDesktopCapturer( input: {
+        display?: Electron.Display;
+        window?: ExternalWindow;
+    }): Promise< Buffer | undefined > {
         // console.time('takeScreenshot');        
 
         const { window } = input;

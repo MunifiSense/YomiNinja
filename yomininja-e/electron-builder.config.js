@@ -12,7 +12,12 @@ let buildConfig = {
         "main",
         "renderer/out",
         "**/*.proto",
-        "build"
+        // `build/` is gitignored; include the native addons explicitly.
+        {
+            "from": "build/Release",
+            "to": "build/Release",
+            "filter": [ "*.node" ]
+        }
     ],
     "extraResources": [
         {
@@ -53,7 +58,8 @@ let buildConfig = {
         "compression": "maximum",
         "asarUnpack": [
             "**/node_modules/sharp/**/*",
-            "**/node_modules/@img/**/*"
+            "**/node_modules/@img/**/*",
+            "**/build/Release/*.node"
         ],
         "extraResources": [
             {
@@ -63,6 +69,15 @@ let buildConfig = {
                     "**/*",
                     "!py_ocr_service/models/manga_ocr/**/*"
                 ]
+            },
+            // Mirror into unpacked asar so bindings() can load them at runtime.
+            {
+                "from": "build/Release/window_manager_win32.node",
+                "to": "app.asar.unpacked/build/Release/window_manager_win32.node"
+            },
+            {
+                "from": "build/Release/wgc_capture_win32.node",
+                "to": "app.asar.unpacked/build/Release/wgc_capture_win32.node"
             }
         ]
     },

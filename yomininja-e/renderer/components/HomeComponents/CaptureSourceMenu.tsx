@@ -12,8 +12,6 @@ import { CaptureSource } from '../../../electron-src/ocr_recognition/common/type
 import { CaptureSourceContext } from "../../context/capture_source.provider";
 import { ipcRenderer } from "../../utils/ipc-renderer";
 import { AppInfoContext } from "../../context/app_info.provider";
-import SyncIcon from '@mui/icons-material/Sync';
-
 const defaultTheme = createTheme({
     palette: {
       mode: 'dark'
@@ -146,41 +144,13 @@ export default function CaptureSourceMenu() {
         </> 
     }
 
-    function CaptureSourceList( { items, type }: {items: CaptureSource[], type: 'screen' | 'window' } ) {
+    function CaptureSourceList( { items }: { items: CaptureSource[] } ) {
 
         const sort = ( a, b ) => {
             return a.name < b.name ? -1 : 1
         };
 
         return (<>
-            <Grid item>
-                <Button title={'Refresh list'}
-                    onClick={ () => {
-                        refreshCaptureSources([type])
-                    }} 
-                    sx={{ width: 'max-content' }}
-                >
-                    <Box display='flex' flexDirection='column' alignItems='center'
-                        sx={{
-                            height: '130px',
-                        }}
-                    >
-                        <SyncIcon sx={{ width: '100%', height: '100%' }}/>
-                        <Typography align="center" mt={2}
-                            sx={{ 
-                                textTransform: 'initial',
-                                textOverflow: 'ellipsis',
-                                overflow: 'hidden',
-                                whiteSpace: 'nowrap',
-                                width: '180px',
-                                mt: 'auto'
-                            }}
-                        >
-                            Refresh
-                        </Typography>
-                    </Box>
-                </Button>
-            </Grid>
             { (!items || items.length === 0) && (
                 <Grid item xs={12}>
                     <Typography color="text.secondary" sx={{ maxWidth: 420, mt: 2 }}>
@@ -272,7 +242,6 @@ export default function CaptureSourceMenu() {
                         <Grid container spacing={{ xs: 2, md: 8 }} columns={{ xs: 1, sm: 4, md: 12 }}>
                             <CaptureSourceList
                                 items={ captureSources?.filter( item => item.type === 'screen' ) }
-                                type="screen"
                             />
                         </Grid>
                     </TabPanel>
@@ -280,7 +249,6 @@ export default function CaptureSourceMenu() {
                         <Grid container spacing={{ xs: 2, md: 8 }} columns={{ xs: 1, sm: 4, md: 12 }} >
                             <CaptureSourceList
                                 items={ captureSources?.filter( item => item.type === 'window' ) }
-                                type="window"
                             />
                         </Grid>
                     </TabPanel>

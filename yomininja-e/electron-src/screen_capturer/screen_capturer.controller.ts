@@ -34,10 +34,13 @@ export class ScreenCapturerController {
         // Windows when display HMONITOR handles don't match (seen as
         // GetHmonitorFromDeviceIndex / GetDpiForMonitor errors), which yields
         // empty frames and "No text recognized" even for large browser text.
+        // Hotkey OCR on Windows tries WGC first in AppController; this path is
+        // the WebRTC fallback for window sources when WGC is unavailable.
         if ( captureSource?.name?.includes('Entire screen') )
             return false;
     
         console.time("Screenshot time");
+        console.log( 'Screenshot backend: WebRTC' );
         screenCapturerService.grabFrame();
         return true;
     }
