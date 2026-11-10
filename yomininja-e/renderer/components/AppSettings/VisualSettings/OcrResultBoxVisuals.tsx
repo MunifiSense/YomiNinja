@@ -657,5 +657,45 @@ export default function OcrResultBoxVisualSettings( props: OcrResultBoxVisualSet
             />
 
         </Container>
+
+        <Container sx={{ ml: 1.5, mt: 0, mb: 2, display: 'flex', alignItems: 'center' }}>
+            <FormControlLabel
+                label='Blur background'
+                title="Blurs the capture under the box, then tints with Active BG (use a semi-transparent Active BG for a frosted look)"
+                control={
+                    <Switch
+                        checked={ Boolean( ocrItemBoxVisuals?.background_blur?.enabled ) }
+                        onChange={ ( event ) => {
+                            updateOcrItemBoxVisualsDeb({
+                                background_blur: {
+                                    enabled: event.target.checked,
+                                    strength: Number( ocrItemBoxVisuals?.background_blur?.strength ) || 8,
+                                }
+                            });
+                        }}
+                    />
+                }
+            />
+
+            <TextField label="Blur Strength" sx={textFieldSx}
+                title='Blur radius in pixels'
+                size='small'
+                type="number"
+                disabled={ !ocrItemBoxVisuals?.background_blur?.enabled }
+                inputProps={{ style: { textAlign: 'center' }, min: 1, max: 40 }}
+                value={ Number( ocrItemBoxVisuals?.background_blur?.strength ) || 8 }
+                onInput={ (event: React.ChangeEvent<HTMLInputElement>) => {
+                    let newValue = Number( event.target.value );
+                    newValue = newValue > 0 ? newValue : 1;
+                    newValue = newValue < 40 ? newValue : 40;
+                    updateOcrItemBoxVisuals({
+                        background_blur: {
+                            enabled: Boolean( ocrItemBoxVisuals?.background_blur?.enabled ),
+                            strength: newValue,
+                        }
+                    });
+                }}
+            />
+        </Container>
     </> )
 }

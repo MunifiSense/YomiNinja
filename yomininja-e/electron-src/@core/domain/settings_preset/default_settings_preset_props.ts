@@ -32,6 +32,10 @@ export function getDefaultSettingsPresetProps(): SettingsPresetProps {
                     border_width: 1,
                     size_factor: 5,
                     always_show_text: false,
+                    background_blur: {
+                        enabled: false,
+                        strength: 8,
+                    },
                     text: {
                         color: "#ffffff", // White
                         font_size_factor: 100,

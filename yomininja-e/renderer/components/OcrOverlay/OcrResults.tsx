@@ -274,12 +274,18 @@ export default function OcrResults( props: OcrResultsProps ) {
                                         key={resultIdx}
                                         ocrItem={item}
                                         ocrRegionSize={ocrRegion.size}
+                                        ocrRegionPosition={ocrRegion.position}
                                         contextResolution={ocrResult.context_resolution}
                                         ocrRegionId={ocrRegion.id}
                                         ocrItemBoxVisuals={ocrItemBoxVisuals}
                                         overlayBehavior={overlayBehavior}
                                         overlayHotkeys={overlayHotkeys}
                                         isElectron={isElectron}
+                                        captureImage={
+                                            typeof ocrResult.image === 'string'
+                                                ? ocrResult.image
+                                                : undefined
+                                        }
                                         onClick={ handleBoxClick }
                                         onMouseEnter={ handleBoxMouseEnter }
                                         onMouseLeave={ handleBoxMouseLeave }

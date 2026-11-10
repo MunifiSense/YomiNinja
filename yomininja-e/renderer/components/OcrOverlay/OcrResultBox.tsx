@@ -26,9 +26,13 @@ const BaseOcrResultBox = styled('div')({
 
 export default function OcrResultBox( props: {
     ocrItem: OcrItemScalable;
-    ocrRegionSize: { // Pixels
+    ocrRegionSize: { // 0–1 fractions of the capture
         width: number;
         height: number;
+    };
+    ocrRegionPosition?: { // 0–1 fractions of the capture
+        top: number;
+        left: number;
     };
     contextResolution: OcrResultContextResolution;
     ocrRegionId?: string;
@@ -38,6 +42,8 @@ export default function OcrResultBox( props: {
     contentEditable: boolean;
     isElectron: boolean;
     fontFamily: string;
+    /** Capture / OCR image data URL used for frosted backgrounds. */
+    captureImage?: string;
     onMouseEnter?: ( item: OcrItemScalable, ocrRegionId?: string ) => void;
     onMouseLeave?: () => void;
     onClick?: ( item: OcrItemScalable, ocrRegionId?: string ) => void;
@@ -48,11 +54,13 @@ export default function OcrResultBox( props: {
     const {
         ocrItem,
         ocrRegionSize,
+        ocrRegionPosition,
         contextResolution,
         ocrItemBoxVisuals,
         contentEditable,
         ocrRegionId,
-        isElectron
+        isElectron,
+        captureImage,
     } = props;
     const { box } = ocrItem;
 
@@ -153,7 +161,8 @@ export default function OcrResultBox( props: {
     if ( ocrItem.text.length > 0 )
         adjustedFontSize = ( adjustedFontSize / ocrItem.text.length );
 
-    const activeBoxCss: CSSProperties = {
+    // Emotion nested selectors (`& ruby`, etc.) are not valid CSSProperties keys.
+    const activeBoxCss: Record<string, any> = {
         backgroundColor: ocrItemBoxVisuals?.background_color || 'black',
         outlineColor: ocrItemBoxVisuals?.active_border_color || 'red',
         color: ocrItemBoxVisuals?.text.color || 'white',
@@ -163,7 +172,6 @@ export default function OcrResultBox( props: {
         letterSpacing: ocrItemBoxVisuals?.text.letter_spacing || 'inherit',
         contentVisibility: 'visible',
         zIndex: 10,
-        // @ts-expect-error
         '-webkit-text-stroke-width': ocrItemBoxVisuals?.text?.outline_width,
         '-webkit-text-stroke-color': ocrItemBoxVisuals?.text?.outline_color,
         '& ruby': {
@@ -199,6 +207,27 @@ export default function OcrResultBox( props: {
     }
 
     const alwaysShowText = Boolean( ocrItemBoxVisuals?.always_show_text );
+    const blurEnabled = Boolean( ocrItemBoxVisuals?.background_blur?.enabled );
+    const blurStrength = Math.max( 1, Number( ocrItemBoxVisuals?.background_blur?.strength ) || 8 );
+    const canFrost = blurEnabled && typeof captureImage === 'string' && captureImage.length > 0;
+
+    if ( canFrost ) {
+        activeBoxCss.backgroundColor = 'transparent';
+        activeBoxCss['& ruby'] = { backgroundColor: 'transparent' };
+        activeBoxCss['& ruby rt'] = { backgroundColor: 'transparent' };
+        if ( activeBoxCss['& ruby:hover rt'] ) {
+            activeBoxCss['& ruby:hover rt'] = {
+                ...activeBoxCss['& ruby:hover rt'],
+                backgroundColor: 'transparent',
+            };
+        }
+        if ( activeBoxCss['& .ocr-line-container:hover rt'] ) {
+            activeBoxCss['& .ocr-line-container:hover rt'] = {
+                ...activeBoxCss['& .ocr-line-container:hover rt'],
+                backgroundColor: 'transparent',
+            };
+        }
+    }
 
     const Box = styled( BaseOcrResultBox )({
         '--jlpt-n5': jlptPalette?.N5 || '#4caf50',
@@ -211,7 +240,7 @@ export default function OcrResultBox( props: {
         "&:hover": activeBoxCss,
         "&.editable": activeBoxCss,
         backgroundColor: alwaysShowText
-            ? ( ocrItemBoxVisuals?.background_color || 'black' )
+            ? ( canFrost ? 'transparent' : ( ocrItemBoxVisuals?.background_color || 'black' ) )
             : ocrItemBoxVisuals.background_color_inactive,
         outlineColor: alwaysShowText
             ? ( ocrItemBoxVisuals?.active_border_color || 'red' )
@@ -226,6 +255,16 @@ export default function OcrResultBox( props: {
         alignItems: alignItems,
         flexDirection: isVertical ? 'column' : 'column', // why booth column?
         justifyContent: isMultiline ? 'space-between' : 'center',
+        // Keep overflow visible so furigana/ruby can extend above the box.
+        // Frost layers are clipped in their own wrapper instead.
+        isolation: canFrost ? 'isolate' : undefined,
+        '& .ocr-box-frost-clip': {
+            opacity: alwaysShowText ? 1 : 0,
+            transition: 'opacity 60ms linear',
+        },
+        '&:hover .ocr-box-frost-clip, &.editable .ocr-box-frost-clip': {
+            opacity: 1,
+        },
     });
 
     const { width } = box.dimensions;
@@ -243,6 +282,50 @@ export default function OcrResultBox( props: {
     const sizeExpansionHeightPct = ( sizeExpansionPx / regionHeightPx ) * 100;
     const sizeExpansionLeftPct =  sizeExpansionWidthPct / 2;
     const sizeExpansionBottomPct =  sizeExpansionHeightPct / 2;
+
+    const expandedLeftPct = left - sizeExpansionLeftPct;
+    const expandedBottomPct = bottom - sizeExpansionBottomPct;
+    const expandedWidthPct = minWidth + sizeExpansionWidthPct;
+    const expandedHeightPct = box.dimensions.height + sizeExpansionHeightPct;
+    const expandedTopPct = 100 - expandedBottomPct - expandedHeightPct;
+
+    const regionLeft = ocrRegionPosition?.left ?? 0;
+    const regionTop = ocrRegionPosition?.top ?? 0;
+    const absLeft = regionLeft + ocrRegionSize.width * ( expandedLeftPct / 100 );
+    const absTop = regionTop + ocrRegionSize.height * ( expandedTopPct / 100 );
+    const absWidth = Math.max( ocrRegionSize.width * ( expandedWidthPct / 100 ), 0.0001 );
+    const absHeight = Math.max( ocrRegionSize.height * ( expandedHeightPct / 100 ), 0.0001 );
+
+    const frostClipStyle: CSSProperties = {
+        position: 'absolute',
+        inset: 0,
+        zIndex: -1,
+        overflow: 'hidden',
+        borderRadius: 'inherit',
+        pointerEvents: 'none',
+    };
+
+    const frostLayerStyle: CSSProperties = {
+        position: 'absolute',
+        pointerEvents: 'none',
+        backgroundImage: `url(${captureImage})`,
+        backgroundRepeat: 'no-repeat',
+        backgroundSize: '100% 100%',
+        width: `${( 1 / absWidth ) * 100}%`,
+        height: `${( 1 / absHeight ) * 100}%`,
+        left: `${( -absLeft / absWidth ) * 100}%`,
+        top: `${( -absTop / absHeight ) * 100}%`,
+        filter: `blur(${blurStrength}px)`,
+        transform: 'scale(1.12)',
+        transformOrigin: 'center',
+    };
+
+    const tintLayerStyle: CSSProperties = {
+        position: 'absolute',
+        inset: 0,
+        pointerEvents: 'none',
+        backgroundColor: ocrItemBoxVisuals?.background_color || 'black',
+    };
 
 
     useEffect(() => {
@@ -294,13 +377,13 @@ export default function OcrResultBox( props: {
         <Box className={ `extracted-text ${contentEditable ? 'editable' : ''}` } ref={boxRef}
             role="textbox"
             style={{
-                left: left - sizeExpansionLeftPct + '%',
+                left: expandedLeftPct + '%',
                 // top: box.position.top + '%',
                 transformOrigin: box?.transform_origin || 'top left',
-                bottom: ( bottom - sizeExpansionBottomPct ) + '%',
+                bottom: expandedBottomPct + '%',
                 transform: boxTransform,
-                minWidth: ( minWidth + sizeExpansionWidthPct ) + '%',
-                minHeight: ( box.dimensions.height + sizeExpansionHeightPct ) + '%',
+                minWidth: expandedWidthPct + '%',
+                minHeight: expandedHeightPct + '%',
                 cursor: ocrItem.recognition_state === 'DETECTED' ? 'progress' : 'unset'
             }}
             onMouseEnter={ () => props.onMouseEnter( ocrItem, ocrRegionId ) }
@@ -317,6 +400,13 @@ export default function OcrResultBox( props: {
             // }}
             suppressContentEditableWarning
         >
+            { canFrost && (
+                // Clip frost/tint to the box only — do not clip furigana that extends outside.
+                <div className="ocr-box-frost-clip" style={frostClipStyle}>
+                    <div className="ocr-box-frost" style={frostLayerStyle} />
+                    <div className="ocr-box-tint" style={tintLayerStyle} />
+                </div>
+            ) }
             { text.map( ( line, lIdx ) => {
 
                 const isLastLine = ocrItem.text.length - 1 === lIdx;

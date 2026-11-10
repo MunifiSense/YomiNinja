@@ -382,7 +382,9 @@ export default function OcrResultLine( props: OcrResultLineProps ) {
                     // transform: containerTransform,
                     borderRadius: ocrItemBoxVisuals.border_radius,// '0px',
                     // textAlign: box.isVertical ? 'inherit' : 'left',
-                    backgroundColor: ocrItemBoxVisuals.background_color,
+                    backgroundColor: ocrItemBoxVisuals?.background_blur?.enabled
+                        ? 'transparent'
+                        : ocrItemBoxVisuals.background_color,
                     // border: 'solid 1px green'
                 }}
             >

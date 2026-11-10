@@ -110,7 +110,9 @@ export default function OcrWordsContainer( props: OcrWordsContainerProps ) {
             // border: 'none',
             // border: 'solid 2px red',
             "&:hover": {
-                backgroundColor: ocrItemBoxVisuals?.background_color
+                backgroundColor: ocrItemBoxVisuals?.background_blur?.enabled
+                    ? 'transparent'
+                    : ocrItemBoxVisuals?.background_color
             }
         };
 

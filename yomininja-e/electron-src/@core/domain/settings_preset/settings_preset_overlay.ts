@@ -33,6 +33,12 @@ export type OverlayOcrItemBoxVisuals = {
     size_factor: number; // % 0 .. 100
     /** When true, OCR text is always visible (not only on box hover). */
     always_show_text?: boolean;
+    /** Frosted box background: blur the capture under the box, then tint with background_color. */
+    background_blur?: {
+        enabled: boolean;
+        /** CSS blur radius in pixels. */
+        strength: number;
+    };
     text: {
         color: string;
         font_size_factor: number; // % 0 .. 100
