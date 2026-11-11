@@ -3,7 +3,7 @@ import { SettingsContext } from "../../context/settings.provider";
 import { useContext, useEffect, useState } from "react";
 import { SettingsPresetJson } from "../../../electron-src/@core/domain/settings_preset/settings_preset";
 import { GeneralSettings, RunAtSystemStartupOptions } from "../../../electron-src/@core/domain/settings_preset/settings_preset_general";
-import { CompatibilitySettings } from "../../../electron-src/@core/domain/settings_preset/settings_preset_compatibility";
+import { CaptureBackend, CompatibilitySettings } from "../../../electron-src/@core/domain/settings_preset/settings_preset_compatibility";
 
 
 // Settings section component
@@ -112,6 +112,63 @@ export default function AppSettingsGeneral() {
                     }
                 />
             </Container>
+
+            { typeof navigator !== 'undefined' && navigator.userAgent.includes( 'Windows' ) && (
+                <>
+                    <Typography gutterBottom variant="h6" component="div" ml={0} mb={2} mt={3}>
+                        Capture (Windows)
+                    </Typography>
+
+                    <Container sx={{ ml: 1.5, mt: 0, mb: 2 }}>
+                        <FormControl fullWidth
+                            sx={{
+                                display: 'flex',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                width: 360
+                            }}
+                        >
+                            <Select
+                                value={ compatibilitySettings?.capture_backend || 'auto' }
+                                label="OCR Capture Backend"
+                                title="Auto prefers Windows.Graphics.Capture, then falls back."
+                                onChange={ ( event ) => {
+                                    const { value } = event.target;
+                                    if ( typeof value === 'string' ) {
+                                        updateActivePresetCompatibility({
+                                            capture_backend: value as CaptureBackend
+                                        });
+                                    }
+                                }}
+                                sx={{ minWidth: 220 }}
+                            >
+                                <MenuItem value="auto">Auto (recommended)</MenuItem>
+                                <MenuItem value="wgc">Windows.Graphics.Capture</MenuItem>
+                                <MenuItem value="webrtc">WebRTC</MenuItem>
+                                <MenuItem value="desktop_capturer">desktopCapturer</MenuItem>
+                            </Select>
+                            <InputLabel>OCR Capture Backend</InputLabel>
+                        </FormControl>
+                    </Container>
+
+                    <Container sx={{ ml: 1.5, mt: 0, mb: 2 }}>
+                        <FormControlLabel
+                            label="Show yellow capture border"
+                            title="Windows privacy border around the captured window/display (WGC only)."
+                            control={
+                                <Switch
+                                    checked={ Boolean( compatibilitySettings?.show_wgc_border ) }
+                                    onChange={ ( event ) => {
+                                        updateActivePresetCompatibility({
+                                            show_wgc_border: event.target.checked
+                                        });
+                                    }}
+                                />
+                            }
+                        />
+                    </Container>
+                </>
+            )}
 
         </Box>
     )

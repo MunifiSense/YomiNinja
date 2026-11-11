@@ -1,8 +1,7 @@
-// Smoke-test WGC native addon under Electron (not plain Node).
-// Usage: npx electron scripts/smoke_wgc_capture.js
+// Smoke-test WGC session grab under Electron.
+// Usage: .\node_modules\electron\dist\electron.exe scripts\smoke_wgc_capture.js
 
 const { app, screen } = require('electron');
-const path = require('path');
 
 app.whenReady().then(async () => {
   const results = {
@@ -14,8 +13,9 @@ app.whenReady().then(async () => {
   try {
     const {
       isWgcCaptureAvailable,
-      captureMonitorPng,
-      captureWindowPng,
+      ensureWgcSession,
+      grabWgcSessionJpeg,
+      closeWgcSession,
     } = require('../main/gyp_modules/wgc_capture/win32/wgc_capture_win32');
 
     results.available = isWgcCaptureAvailable();
@@ -23,33 +23,31 @@ app.whenReady().then(async () => {
 
     if (results.available) {
       const display = screen.getPrimaryDisplay();
-      console.time('WGC capture');
-      const image = await captureMonitorPng({
+      const target = {
+        type: 'monitor',
         x: display.bounds.x,
         y: display.bounds.y,
         width: display.bounds.width,
         height: display.bounds.height,
-      });
-      console.timeEnd('WGC capture');
+      };
 
-      results.monitorBytes = image?.length || 0;
-      console.log('[smoke] monitor PNG bytes:', results.monitorBytes);
+      const opened = ensureWgcSession(target);
+      results.sessionOpen = opened;
+      console.log('[smoke] session open:', opened);
 
-      // Soft fallback check: missing addon path should not throw from bindings try/catch.
-      try {
-        const hwnd = process.hwnd || 0;
-        if (hwnd) {
-          console.time('WGC capture');
-          const winPng = await captureWindowPng(hwnd);
-          console.timeEnd('WGC capture');
-          results.windowBytes = winPng?.length || 0;
-        }
-      } catch (e) {
-        results.windowError = String(e);
+      const sizes = [];
+      for (let i = 0; i < 3; i++) {
+        console.time('WGC session grab+encode');
+        const image = await grabWgcSessionJpeg();
+        console.timeEnd('WGC session grab+encode');
+        sizes.push(image?.length || 0);
       }
+      results.grabs = sizes;
+      closeWgcSession();
+      results.ok = opened && sizes.every((n) => n > 1000);
+    } else {
+      results.ok = false;
     }
-
-    results.ok = Boolean(results.available && results.monitorBytes > 1000);
   } catch (error) {
     results.ok = false;
     results.error = String(error && error.stack || error);

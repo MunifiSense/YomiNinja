@@ -116,6 +116,8 @@ export type OverlayHotkeys = {
     show: string;
     clear: string;
     toggle: string;
+    /** Pause/resume Auto OCR streaming without changing the template. */
+    toggle_auto_ocr?: string;
     manual_adjustment: string;
     remote_control_key: string;
 };

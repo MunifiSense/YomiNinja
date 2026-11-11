@@ -38,6 +38,11 @@ export class ScreenCapturerController {
         // the WebRTC fallback for window sources when WGC is unavailable.
         if ( captureSource?.name?.includes('Entire screen') )
             return false;
+
+        // No WebRTC capturer (e.g. Auto OCR is on the WGC stream path).
+        // Return false so the caller falls through to desktopCapturer.
+        if ( !screenCapturerService.screenCapturerWindow )
+            return false;
     
         console.time("Screenshot time");
         console.log( 'Screenshot backend: WebRTC' );
@@ -50,17 +55,28 @@ export class ScreenCapturerController {
             captureSource: CaptureSource,
             force?: boolean,
             streamFrames: boolean,
+            captureBackend?: import("../@core/domain/settings_preset/settings_preset_compatibility").CaptureBackend,
+            showWgcBorder?: boolean,
         }
     ) {
         screenCapturerService.createCapturer({
             captureSource: input.captureSource,
             force: Boolean(input.force),
             streamFrames: input.streamFrames,
-            showWindow: isDev
+            showWindow: isDev,
+            captureBackend: input.captureBackend,
+            showWgcBorder: input.showWgcBorder,
         });
     }
 
     onStreamFrame( handler: ( frame: Buffer ) => Promise<void> ) {
+        // Used by the Windows WGC stream path (no renderer capturer).
+        screenCapturerService.streamFrameHandler = async ( frame: Buffer ) => {
+            if ( !frame )
+                return;
+            await handler( frame );
+        };
+
         ipcMain.handle( 'screen_capturer:stream_frame', async ( event: IpcMainInvokeEvent, frame: Buffer ) => {
 
             if ( !frame )

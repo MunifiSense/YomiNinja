@@ -604,6 +604,11 @@ export class OverlayController {
         ipcMain.send( this.overlayWindow, 'user_command:toggle_results', this.showResults );
     }
 
+    /** Hide OCR result boxes (same as the Hide overlay hotkey). */
+    hideResults = () => {
+        this.hideOverlayHotkeyHandler();
+    }
+
     private hideOverlayHotkeyHandler = () => {
         // this.showOverlayWindow();
         this.showResults = false;

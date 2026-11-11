@@ -1,15 +1,20 @@
-import { BrowserWindow, IpcMainInvokeEvent, MessagePortMain, screen } from "electron";
-import { CaptureSource, ExternalWindow } from "../app/types";
+import { BrowserWindow, screen } from "electron";
+import { CaptureSource } from "../app/types";
 import { join } from 'path';
 import { PAGES_DIR } from "../util/directories.util";
 import { format } from 'url';
 import isDev from 'electron-is-dev';
-import { ocrRecognitionController } from "../ocr_recognition/ocr_recognition.index";
-import fs from 'fs';
 import { cloneDeep } from 'lodash';
 import sharp from "sharp";
 import { windowManager } from "../@core/infra/app_initialization";
-import { isMacOS } from "../util/environment.util";
+import { isMacOS, isWindows } from "../util/environment.util";
+import {
+    captureWithSessionJpeg,
+    closeWgcSession,
+    isWgcCaptureAvailable,
+    type WgcSessionTarget,
+} from "../../gyp_modules/wgc_capture/win32/wgc_capture_win32";
+import { CaptureBackend } from "../@core/domain/settings_preset/settings_preset_compatibility";
 
 export class ScreenCapturerService {
 
@@ -17,9 +22,16 @@ export class ScreenCapturerService {
     screenCapturerWindow: BrowserWindow | undefined;
 
     captureHandler: ( frame: Buffer ) => void;
+    streamFrameHandler: ( ( frame: Buffer ) => void | Promise<void> ) | undefined;
     intervalBetweenFrames: number = 333; // ms
     obs: any;
     obsConnected: boolean = false;
+
+    private usingWgcStream = false;
+    private wgcStreamTimer: NodeJS.Timeout | undefined;
+    private wgcStreamInFlight = false;
+    private captureBackend: CaptureBackend = 'auto';
+    private showWgcBorder = false;
 
     async createCapturer(
         input: {
@@ -27,13 +39,42 @@ export class ScreenCapturerService {
             showWindow?: boolean,
             streamFrames: boolean,
             force?: boolean,
+            captureBackend?: CaptureBackend,
+            showWgcBorder?: boolean,
         }
     ) {
 
         const { showWindow, streamFrames } = input;
+        this.captureBackend = input.captureBackend || 'auto';
+        this.showWgcBorder = Boolean( input.showWgcBorder );
 
         if ( input.captureSource.id !== this.captureSource?.id )
             input.force = true;
+
+        this.captureSource = cloneDeep( input.captureSource );
+
+        const preferWgcStream = this.captureBackend === 'auto' || this.captureBackend === 'wgc';
+
+        // Windows Auto OCR: prefer a warm WGC session over the hidden WebRTC window.
+        if ( isWindows && isWgcCaptureAvailable() && streamFrames && preferWgcStream ) {
+            if ( this.screenCapturerWindow )
+                await this.destroyScreenCapturer();
+
+            const started = await this.startWgcStream();
+            if ( started ) {
+                console.log( 'Screenshot stream backend: WGC' );
+                return;
+            }
+            console.warn( 'WGC stream failed to start; falling back to WebRTC capturer' );
+            this.stopWgcStream();
+        } else {
+            this.stopWgcStream();
+        }
+
+        if ( this.captureBackend === 'wgc' && streamFrames ) {
+            console.warn( 'WGC stream unavailable while capture_backend=wgc; Auto OCR stream idle' );
+            return;
+        }
 
         if ( 
             !input.force &&
@@ -47,8 +88,6 @@ export class ScreenCapturerService {
 
             return;
         }
-
-        this.captureSource = cloneDeep( input.captureSource );
 
         await this.sleep(1000);
         
@@ -103,6 +142,8 @@ export class ScreenCapturerService {
     }
 
     async destroyScreenCapturer() {
+        this.stopWgcStream();
+
         if ( !this.screenCapturerWindow ) 
             return;
 
@@ -116,6 +157,10 @@ export class ScreenCapturerService {
 
     setIntervalBetweenFrames( ms: number ) {
         this.intervalBetweenFrames = ms;
+        if ( this.usingWgcStream ) {
+            this.startWgcStreamTimer();
+            return;
+        }
         this.screenCapturerWindow?.webContents.send(
             'screen_capturer:set_interval',
             this.intervalBetweenFrames
@@ -127,18 +172,109 @@ export class ScreenCapturerService {
     }
 
     startStream = async () => {
+        if ( this.usingWgcStream ) {
+            await this.startWgcStream();
+            return;
+        }
 
         this.screenCapturerWindow?.webContents.send('screen_capturer:start_stream');
         this.setIntervalBetweenFrames( this.intervalBetweenFrames );
-
-        // while ( this.screenCapturerWindow !== undefined ) {
-        //     await this.sleep( this.intervalBetweenFrames );
-        //     this.grabFrame();
-        // }
     }
 
     stopStream = () => {
+        if ( this.usingWgcStream ) {
+            this.stopWgcStream();
+            return;
+        }
         this.screenCapturerWindow?.webContents.send('screen_capturer:stop_stream');
+    }
+
+    private resolveWgcTarget(): WgcSessionTarget | undefined {
+        const source = this.captureSource;
+        if ( !source )
+            return undefined;
+
+        if ( source.type === 'window' ) {
+            const hwnd = source.window?.id ?? Number( String( source.id ).split(':')[1] );
+            if ( !hwnd || Number.isNaN( hwnd ) )
+                return undefined;
+            return { type: 'window', hwnd };
+        }
+
+        const displays = screen.getAllDisplays();
+        const display = source.displayId != null && source.displayId !== -1
+            ? displays.find( d => d.id === source.displayId )
+            : undefined;
+        const bounds = ( display || screen.getPrimaryDisplay() ).bounds;
+        return {
+            type: 'monitor',
+            x: bounds.x,
+            y: bounds.y,
+            width: bounds.width,
+            height: bounds.height,
+        };
+    }
+
+    private async startWgcStream(): Promise< boolean > {
+        const target = this.resolveWgcTarget();
+        if ( !target )
+            return false;
+
+        // Prime the session with one grab so failures show up before we claim success.
+        const probe = await captureWithSessionJpeg(
+            target,
+            { showBorder: this.showWgcBorder }
+        );
+        if ( !probe )
+            return false;
+
+        this.usingWgcStream = true;
+        this.startWgcStreamTimer();
+        return true;
+    }
+
+    private startWgcStreamTimer() {
+        if ( this.wgcStreamTimer )
+            clearInterval( this.wgcStreamTimer );
+
+        this.wgcStreamTimer = setInterval( () => {
+            void this.grabWgcStreamFrame();
+        }, Math.max( 50, this.intervalBetweenFrames ) );
+    }
+
+    private stopWgcStream() {
+        if ( this.wgcStreamTimer ) {
+            clearInterval( this.wgcStreamTimer );
+            this.wgcStreamTimer = undefined;
+        }
+        this.usingWgcStream = false;
+        this.wgcStreamInFlight = false;
+        closeWgcSession();
+    }
+
+    private async grabWgcStreamFrame() {
+        if ( this.wgcStreamInFlight || !this.usingWgcStream )
+            return;
+
+        const target = this.resolveWgcTarget();
+        if ( !target )
+            return;
+
+        this.wgcStreamInFlight = true;
+        try {
+            const frame = await captureWithSessionJpeg(
+                target,
+                { showBorder: this.showWgcBorder }
+            );
+            if ( !frame )
+                return;
+            if ( this.streamFrameHandler )
+                await this.streamFrameHandler( frame );
+        } catch ( error ) {
+            console.warn( 'WGC stream frame failed:', error );
+        } finally {
+            this.wgcStreamInFlight = false;
+        }
     }
 
     sleep( ms: number ) {
@@ -179,12 +315,13 @@ export class ScreenCapturerService {
     }
 
     async setCaptureSource( captureSource: CaptureSource ) {
+        this.captureSource = cloneDeep( captureSource );
 
-        if ( !this.screenCapturerWindow ) {
-            this.captureSource = cloneDeep( captureSource );
-            return;
+        if ( this.usingWgcStream ) {
+            // Re-prime session against the new target on the next tick.
+            closeWgcSession();
+            await this.startWgcStream();
         }
-
     }
 
     async cropWorkAreaFromImage(

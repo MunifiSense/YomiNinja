@@ -518,8 +518,16 @@ export class OcrResultScalable {
 
     toJson( serializeImage?: boolean ): OcrResultScalableJson {
 
-        const image = ( serializeImage && this.image && typeof this.image !== 'string' ) ?
-            'data:image/png;base64,'+Buffer.from(this.image).toString('base64'): this.image;
+        // Callers that need a correct MIME for JPEG/PNG should prefer async
+        // bufferToDataURL; this sync path sniff-prefixes from magic bytes.
+        let image = this.image;
+        if ( serializeImage && this.image && typeof this.image !== 'string' ) {
+            const buf = Buffer.from( this.image );
+            const mime = buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff
+                ? 'image/jpeg'
+                : 'image/png';
+            image = `data:${mime};base64,` + buf.toString( 'base64' );
+        }
 
         return {
             ...this,

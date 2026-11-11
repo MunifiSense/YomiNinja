@@ -330,7 +330,7 @@ export class OcrRecognitionController {
     async ocrResultToJson( result: OcrResultScalable ): Promise<OcrResultScalable > {
 
         if ( result?.image && typeof result.image !== 'string' ) {
-            result.image = 'data:image/png;base64,'+Buffer.from(result.image).toString('base64');
+            result.image = await bufferToDataURL({ image: Buffer.from( result.image ) });
         }
 
         // for ( const region of result.ocr_regions ) {

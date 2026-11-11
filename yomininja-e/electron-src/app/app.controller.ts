@@ -67,6 +67,9 @@ export class AppController {
 
     private isEditingOcrTemplate: boolean = false;
 
+    /** Runtime pause for Auto OCR stream (does not mutate the template). */
+    private autoOcrUserEnabled = true;
+
     private isCaptureSourceUserSelected: boolean = false;
 
     private tray: Tray | undefined;
@@ -190,8 +193,7 @@ export class AppController {
         screenCapturerController.setCaptureSource( this.activeCaptureSource );
 
         if ( !isWaylandDisplay ) {
-            screenCapturerController.createCapturer({
-                captureSource: this.activeCaptureSource,
+            await this.createScreenCapturer({
                 streamFrames: false
             });
         }
@@ -240,6 +242,16 @@ export class AppController {
             this.applySettingsPreset( message );
             overlayController.applySettingsPreset( message );
             ocrRecognitionController.applySettingsPreset( message );
+
+            // Capture backend / WGC border may have changed — drop the warm session
+            // and rebuild the stream capturer with the new preference.
+            this.appService.closeWgcCaptureSession();
+            if ( !isWaylandDisplay && this.activeCaptureSource ) {
+                await this.createScreenCapturer({
+                    force: true,
+                    streamFrames: this.isAutoOcrStreamingEnabled
+                });
+            }
         
             return {
                 restartOcrAdapter
@@ -277,6 +289,10 @@ export class AppController {
 
                 this.activeCaptureSource = message;
 
+                // Capture target changed; drop any warm WGC session so the next
+                // grab opens against the new HWND/monitor.
+                this.appService.closeWgcCaptureSession();
+
                 if ( this.userSelectedWindowId && !isWaylandDisplay ) {
                     this.captureSourceWindow = await this.appService.getExternalWindow(
                         this.userSelectedWindowId
@@ -304,10 +320,9 @@ export class AppController {
                 //     isAutoOcrEnabled: ocrTemplatesController.isAutoOcrEnabled
                 // });
                 
-                screenCapturerController.createCapturer({
-                    captureSource: this.activeCaptureSource,
+                await this.createScreenCapturer({
                     force: true,
-                    streamFrames: ocrTemplatesController.isAutoOcrEnabled
+                    streamFrames: this.isAutoOcrStreamingEnabled
                 });
                 
                 this.isCaptureSourceUserSelected = true;
@@ -327,19 +342,59 @@ export class AppController {
             const isAutoOcrEnabled = template?.isAutoOcrEnabled() || false;
 
             if ( electronIsDev )
-                console.log({ isAutoOcrEnabled });
+                console.log({ isAutoOcrEnabled, autoOcrUserEnabled: this.autoOcrUserEnabled });
 
-            if ( !isAutoOcrEnabled )
+            if ( !this.isAutoOcrStreamingEnabled )
                 await screenCapturerController.stopStream();
 
-            if ( isAutoOcrEnabled && this.isCaptureSourceUserSelected ) {
-                screenCapturerController.createCapturer({
-                    captureSource: this.activeCaptureSource,
+            if ( this.isAutoOcrStreamingEnabled && this.isCaptureSourceUserSelected ) {
+                await this.createScreenCapturer({
                     force: false,
-                    streamFrames: isAutoOcrEnabled
+                    streamFrames: true
                 });
             }
         });
+    }
+
+    private get isAutoOcrStreamingEnabled(): boolean {
+        return Boolean( ocrTemplatesController.isAutoOcrEnabled && this.autoOcrUserEnabled );
+    }
+
+    private async createScreenCapturer( input: {
+        streamFrames: boolean;
+        force?: boolean;
+    }) {
+        const prefs = await this.appService.getCapturePreferences();
+        screenCapturerController.createCapturer({
+            captureSource: this.activeCaptureSource,
+            force: Boolean( input.force ),
+            streamFrames: input.streamFrames,
+            captureBackend: prefs.backend,
+            showWgcBorder: prefs.showWgcBorder,
+        });
+    }
+
+    toggleAutoOcr = async () => {
+        if ( !ocrTemplatesController.isAutoOcrEnabled ) {
+            console.warn( 'Auto OCR toggle ignored: active template has no Auto OCR regions' );
+            return;
+        }
+
+        this.autoOcrUserEnabled = !this.autoOcrUserEnabled;
+        console.log( `Auto OCR stream: ${ this.autoOcrUserEnabled ? 'on' : 'off' }` );
+
+        if ( this.autoOcrUserEnabled && this.isCaptureSourceUserSelected ) {
+            // Resume streaming; overlay stays hidden until the next recognition.
+            await this.createScreenCapturer({
+                force: false,
+                streamFrames: true
+            });
+            return;
+        }
+
+        // Pause detection and clear the on-screen boxes.
+        await screenCapturerController.stopStream();
+        overlayController.hideResults();
     }
 
     async registerGlobalShortcuts( settingsPresetJson?: SettingsPresetJson ) {
@@ -371,6 +426,19 @@ export class AppController {
         else if ( overlayHotkeys.ocr ) {
             globalShortcut.register( overlayHotkeys.ocr, this.handleOcrCommand );
             this.globalShortcutAccelerators.push( overlayHotkeys.ocr );
+        }
+
+        const toggleAutoOcrHotkey = overlayHotkeys.toggle_auto_ocr || 'Alt+A';
+        if ( toggleAutoOcrHotkey?.includes( 'Mouse' ) ) {
+            uIOhook.on( 'mousedown', async ( e ) => {
+                if ( !matchUiohookMouseEventButton( e, toggleAutoOcrHotkey ) )
+                    return;
+                await this.toggleAutoOcr();
+            });
+        }
+        else if ( toggleAutoOcrHotkey ) {
+            globalShortcut.register( toggleAutoOcrHotkey, this.toggleAutoOcr );
+            this.globalShortcutAccelerators.push( toggleAutoOcrHotkey );
         }
         
         // OCR engine dedicated hotkeys
@@ -461,6 +529,10 @@ export class AppController {
 
         if ( command === 'ocr' ) {
             await this.handleOcrCommand();
+            return true;
+        }
+        else if ( command === 'toggle-auto-ocr' ) {
+            await this.toggleAutoOcr();
             return true;
         }
         else if ( command === 'ocr/apple-vision' ) {
@@ -642,22 +714,32 @@ export class AppController {
         if ( !input.image ) {
             this.previousOcrCommandData = input;
 
-            // Windows: prefer one-shot WGC before the slower WebRTC capturer.
+            // Windows: prefer WGC before WebRTC when the capture backend allows it.
             // PrintScreen still arrives with input.image and bypasses this path.
             if ( isWindows ) {
                 await this.handleCaptureSourceSelection();
-                wgcAttempted = true;
-                console.time( 'Screenshot time' );
-                image = await this.appService.tryWgcCapture({
-                    display: this.captureSourceDisplay,
-                    window: this.captureSourceWindow,
-                });
-                console.timeEnd( 'Screenshot time' );
-                if ( image )
-                    console.log( 'Screenshot backend: WGC' );
-            }
+                const prefs = await this.appService.getCapturePreferences();
+                if ( this.appService.shouldTryWgc( prefs.backend ) ) {
+                    wgcAttempted = true;
+                    console.time( 'Screenshot time' );
+                    image = await this.appService.tryWgcCapture({
+                        display: this.captureSourceDisplay,
+                        window: this.captureSourceWindow,
+                        showBorder: prefs.showWgcBorder,
+                    });
+                    console.timeEnd( 'Screenshot time' );
+                    if ( image )
+                        console.log( 'Screenshot backend: WGC' );
+                }
 
-            if ( !image ) {
+                if ( !image && this.appService.shouldTryWebRtc( prefs.backend ) ) {
+                    const screenshotSuccess = screenCapturerController.screenshot({
+                        captureSource: this.activeCaptureSource
+                    });
+
+                    if ( screenshotSuccess ) return;
+                }
+            } else if ( !image ) {
                 const screenshotSuccess = screenCapturerController.screenshot({
                     captureSource: this.activeCaptureSource
                 });
@@ -760,6 +842,9 @@ export class AppController {
         // await this.handleCaptureSourceSelection();
 
         if ( overlayController.isOverlayMovableResizable )
+            return;
+
+        if ( !this.isAutoOcrStreamingEnabled )
             return;
 
         if ( !image ) return;

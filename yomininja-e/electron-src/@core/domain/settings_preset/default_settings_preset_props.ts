@@ -13,6 +13,8 @@ export function getDefaultSettingsPresetProps(): SettingsPresetProps {
         compatibility: {
             hardware_acceleration: true,
             gpu_compositing: true,
+            capture_backend: 'auto',
+            show_wgc_border: false,
         },
         overlay: {
             visuals: {
@@ -93,6 +95,7 @@ export function getDefaultSettingsPresetProps(): SettingsPresetProps {
                 toggle: 'Alt+C',
                 show: 'Alt+B',
                 clear: 'Alt+V',
+                toggle_auto_ocr: 'Alt+A',
                 ocr_on_screen_shot: true,
                 manual_adjustment: 'Ctrl+Shift+M',
                 remote_control_key: crypto.randomUUID()

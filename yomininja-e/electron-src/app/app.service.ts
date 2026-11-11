@@ -1,17 +1,23 @@
 import { desktopCapturer } from "electron";
 import { TaskbarProperties } from "../../gyp_modules/window_management/window_manager";
 import {
-    captureMonitorPng,
-    captureWindowPng,
+    captureWithSessionJpeg,
+    closeWgcSession,
     isWgcCaptureAvailable,
 } from "../../gyp_modules/wgc_capture/win32/wgc_capture_win32";
 import { GetActiveSettingsPresetUseCase } from "../@core/application/use_cases/get_active_settings_preset/get_active_settings_preset.use_case";
+import { CaptureBackend } from "../@core/domain/settings_preset/settings_preset_compatibility";
 import { getActiveProfile, windowManager } from "../@core/infra/app_initialization";
 import { CaptureSource, ExternalWindow } from "./types";
 import { screen } from 'electron';
 import sharp from "sharp";
 const isMacOs = process.platform === 'darwin';
 import { isLinux, isMacOS, isWaylandDisplay, isWindows } from "../util/environment.util";
+
+export type CapturePreferences = {
+    backend: CaptureBackend;
+    showWgcBorder: boolean;
+};
 
 
 export const entireScreenAutoCaptureSource: CaptureSource = {
@@ -49,6 +55,23 @@ export class AppService {
         return await this.getActiveSettingsPresetUseCase.execute({
             profileId: getActiveProfile().id
         });
+    }
+
+    async getCapturePreferences(): Promise< CapturePreferences > {
+        const preset = await this.getActiveSettingsPreset();
+        const compatibility = preset?.compatibility;
+        return {
+            backend: compatibility?.capture_backend || 'auto',
+            showWgcBorder: Boolean( compatibility?.show_wgc_border ),
+        };
+    }
+
+    shouldTryWgc( backend: CaptureBackend ): boolean {
+        return backend === 'auto' || backend === 'wgc';
+    }
+
+    shouldTryWebRtc( backend: CaptureBackend ): boolean {
+        return backend === 'auto' || backend === 'webrtc';
     }
 
     getTaskbar(): TaskbarProperties {
@@ -170,15 +193,21 @@ export class AppService {
 
         if ( !image ) {
             console.time("Screenshot time");
-            if ( preferWgc ) {
-                image = await this.tryWgcCapture({ display, window });
+            const prefs = await this.getCapturePreferences();
+            if ( preferWgc && this.shouldTryWgc( prefs.backend ) ) {
+                image = await this.tryWgcCapture({ display, window, showBorder: prefs.showWgcBorder });
                 if ( image )
                     console.log( 'Screenshot backend: WGC' );
             }
             if ( !image ) {
-                image = await this.takeScreenshotDesktopCapturer({ display, window });
-                if ( image )
-                    console.log( 'Screenshot backend: desktopCapturer' );
+                // Skip desktopCapturer only when the user forced WebRTC for a window
+                // source (entire-screen WebRTC is already avoided elsewhere).
+                const allowDesktopCapturer = prefs.backend !== 'webrtc' || Boolean( display );
+                if ( allowDesktopCapturer ) {
+                    image = await this.takeScreenshotDesktopCapturer({ display, window });
+                    if ( image )
+                        console.log( 'Screenshot backend: desktopCapturer' );
+                }
             }
             console.log()
             console.timeEnd("Screenshot time");
@@ -192,70 +221,53 @@ export class AppService {
         return image;
     }
 
-    /** One-shot Windows.Graphics.Capture; returns undefined on non-Windows / miss / black frame. */
+    /** Warm WGC session grab (JPEG); undefined on non-Windows / miss / black frame. */
     async tryWgcCapture( input: {
         display?: Electron.Display;
         window?: ExternalWindow;
+        showBorder?: boolean;
     }): Promise< Buffer | undefined > {
 
         if ( !isWindows || !isWgcCaptureAvailable() )
             return undefined;
 
+        const prefs = input.showBorder === undefined
+            ? await this.getCapturePreferences()
+            : null;
+        const showBorder = input.showBorder ?? Boolean( prefs?.showWgcBorder );
         const { window, display } = input;
 
         try {
             if ( window?.id ) {
-                const image = await captureWindowPng( window.id );
-                if ( image && !await this.isLikelyBlankCapture( image ) )
-                    return image;
-                if ( image )
-                    console.warn( 'WGC window capture looked blank; falling back' );
-                return undefined;
+                return await captureWithSessionJpeg(
+                    { type: 'window', hwnd: window.id },
+                    { showBorder }
+                );
             }
 
             if ( display ) {
                 const bounds = display.bounds;
-                const image = await captureMonitorPng({
-                    x: bounds.x,
-                    y: bounds.y,
-                    width: bounds.width,
-                    height: bounds.height,
-                });
-                if ( image && !await this.isLikelyBlankCapture( image ) )
-                    return image;
-                if ( image )
-                    console.warn( 'WGC monitor capture looked blank; falling back' );
+                return await captureWithSessionJpeg(
+                    {
+                        type: 'monitor',
+                        x: bounds.x,
+                        y: bounds.y,
+                        width: bounds.width,
+                        height: bounds.height,
+                    },
+                    { showBorder }
+                );
             }
         } catch ( error ) {
             console.warn( 'WGC capture path failed:', error );
+            closeWgcSession();
         }
 
         return undefined;
     }
 
-    private async isLikelyBlankCapture( image: Buffer ): Promise< boolean > {
-        try {
-            const { data, info } = await sharp( image )
-                .ensureAlpha()
-                .raw()
-                .toBuffer({ resolveWithObject: true });
-
-            const pixels = info.width * info.height;
-            if ( !pixels )
-                return true;
-
-            // Sample every Nth pixel; treat near-black as blank (protected/black WGC frames).
-            const step = Math.max( 1, Math.floor( pixels / 4096 ) );
-            let lit = 0;
-            for ( let i = 0; i < pixels; i += step ) {
-                const o = i * info.channels;
-                if ( data[o] > 8 || data[o + 1] > 8 || data[o + 2] > 8 )
-                    lit++;
-            }
-            return lit < 4;
-        } catch {
-            return false;
-        }
+    closeWgcCaptureSession(): void {
+        closeWgcSession();
     }
 
     private async takeScreenshotDesktopCapturer( input: {

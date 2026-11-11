@@ -47,6 +47,7 @@ export default function AppSettingsHotkeys() {
     const ocrKeys = stringToHotkeyCombination( overlayHotkeys?.ocr );
     const copyTextKeys = stringToHotkeyCombination( overlayHotkeys?.copy_text );
     const toggleOverlayKeys = stringToHotkeyCombination( overlayHotkeys?.toggle );
+    const toggleAutoOcrKeys = stringToHotkeyCombination( overlayHotkeys?.toggle_auto_ocr || '' );
     const showOverlayKeys = stringToHotkeyCombination( overlayHotkeys?.show );
     const clearOverlayKeys = stringToHotkeyCombination( overlayHotkeys?.clear );
     const manualAdjustmentOverlayKeys = stringToHotkeyCombination( overlayHotkeys?.manual_adjustment );
@@ -274,6 +275,17 @@ export default function AppSettingsHotkeys() {
                         updateActivePresetHotkeys({ toggle: hotkeyCombinationToString( input ) })
                     }}
                     commandLine={ getCmdLine('/toggle-overlay') }
+                />
+
+                <HotkeyFields
+                    label='Pause/resume Auto OCR (also hides overlay)'
+                    keyCombination={ toggleAutoOcrKeys }
+                    defaultKeys={ overlayDefaultHotkeys?.toggle_auto_ocr || 'Alt+A' }
+                    onChangeHandler={ ( input?: string[]  ) => {
+                        if ( !input ) return;
+                        updateActivePresetHotkeys({ toggle_auto_ocr: hotkeyCombinationToString( input ) })
+                    }}
+                    commandLine={ getCmdLine('/toggle-auto-ocr') }
                 />
 
                 <HotkeyFields
